@@ -63,7 +63,8 @@ send_message("消息内容")
 
 1. **clean_window()** - 打开微信窗口，关闭所有子窗口，确保窗口状态干净
 2. **search_and_select(target_name)** - Cmd+F 打开搜索框，粘贴并搜索联系人名称，Enter 打开聊天
-3. **send_message(msg)** - 粘贴消息内容，Enter 发送
+3. **send_message(msg)** - 粘贴消息内容，Enter 发送文本消息
+4. **send_file(file_path)** - osascript 复制文件到剪贴板，Cmd+V 粘贴，Enter 发送文件
 
 ## 关键技术点
 

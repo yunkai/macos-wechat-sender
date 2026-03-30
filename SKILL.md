@@ -27,7 +27,8 @@ version: 1.0.0
 
 1. **clean_window()** - 打开微信窗口，使用 AppleScript 关闭所有子窗口，确保窗口处于干净状态
 2. **search_and_select(target_name)** - 按 Escape 确保不在输入模式，Cmd+F 打开搜索框，粘贴联系人名称并搜索，Enter 打开聊天
-3. **send_message(msg)** 或 **send_file(file_path)** - 发送文本消息或文件
+3. **send_message(msg)** - 粘贴消息内容，Enter 发送文本消息
+4. **send_file(file_path)** - osascript 复制文件到剪贴板，Cmd+V 粘贴，Enter 发送文件
 
 ## 核心代码模板
 
