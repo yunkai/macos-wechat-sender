@@ -147,10 +147,9 @@ def send_file(file_path):
     
     工作流程：
     1. 确保文件路径是绝对路径
-    2. 在 Finder 中定位到文件（用 Cmd+Shift+G 前往）
-    3. Cmd+C 复制文件到剪贴板
-    4. 在聊天框中 Cmd+V 粘贴文件
-    5. 按 Enter 发送
+    2. 用 osascript 将文件复制到剪贴板
+    3. 在聊天框中 Cmd+V 粘贴文件
+    4. 按 Enter 发送
     """
     if not os.path.exists(file_path):
         print(f"❌ 文件不存在: {file_path}")
@@ -159,53 +158,9 @@ def send_file(file_path):
     # 转换为绝对路径
     abs_file_path = os.path.abspath(file_path)
     
-    # 关闭当前窗口，打开 Finder
-    pyautogui.press('escape')
-    time.sleep(0.1)
-    
-    # 打开 Finder
-    subprocess.run(["open", "-a", "Finder"])
-    time.sleep(0.5)
-    
-    # Cmd+Shift+G 前往文件夹
-    pyautogui.keyDown('command')
-    time.sleep(0.05)
-    pyautogui.press('g')
-    pyautogui.keyUp('command')
-    time.sleep(0.1)
-    pyautogui.keyDown('shift')
-    time.sleep(0.05)
-    pyautogui.press('g')
-    pyautogui.keyUp('shift')
-    time.sleep(0.3)
-    
-    # 输入文件路径
-    pyperclip.copy(abs_file_path)
-    time.sleep(0.1)
-    
-    pyautogui.keyDown('command')
-    time.sleep(0.05)
-    pyautogui.press('v')
-    pyautogui.keyUp('command')
-    time.sleep(0.3)
-    
-    # 按 Enter 进入文件夹
-    pyautogui.press('return')
-    time.sleep(0.5)
-    
-    # Cmd+C 复制文件到剪贴板
-    pyautogui.keyDown('command')
-    time.sleep(0.05)
-    pyautogui.press('c')
-    pyautogui.keyUp('command')
-    time.sleep(0.3)
-    
-    # 回到微信窗口
-    subprocess.run(["open", "-a", "WeChat"])
-    time.sleep(0.5)
-    
-    # 点击消息输入框确保在正确位置
-    pyautogui.click(x=400, y=680)
+    # 用 osascript 将文件复制到剪贴板
+    script = f'set the clipboard to (POSIX file "{abs_file_path}")'
+    subprocess.run(['osascript', '-e', script])
     time.sleep(0.3)
     
     # Cmd+V 粘贴文件
