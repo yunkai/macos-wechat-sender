@@ -27,7 +27,7 @@ version: 1.0.0
 
 1. **clean_window()** - 打开微信窗口，使用 AppleScript 关闭所有子窗口，确保窗口处于干净状态
 2. **search_and_select(target_name)** - 按 Escape 确保不在输入模式，Cmd+F 打开搜索框，粘贴联系人名称并搜索，Enter 打开聊天
-3. **send_message(msg)** - 粘贴消息内容，Enter 发送
+3. **send_message(msg)** 或 **send_file(file_path)** - 发送文本消息或文件
 
 ## 核心代码模板
 
@@ -169,14 +169,21 @@ python3 send_wechat.py <联系人> <消息>
 
 # 示例
 python3 send_wechat.py 文件传输助手 你好
-python3 send_wechat.py 小明 此消息由AI发送！
+python3 send_wechat.py 小明 -f /path/to/file.pdf
+python3 send_wechat.py 小明 你好 -f document.docx
 ```
 
 ⚠️ **重要提醒**：使用前请确保「联系人」的名称完全正确，否则可能会发送给错误的对象！
 
 ### 作为模块导入
 ```python
-from send_wechat import clean_window, search_and_select, send_message
+from send_wechat import clean_window, search_and_select, send_message, send_file
+
+# 发送文本消息
+send_message("你好")
+
+# 发送文件
+send_file("/path/to/file.pdf")
 
 clean_window()
 search_and_select("联系人名称")
