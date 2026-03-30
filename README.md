@@ -136,6 +136,8 @@ ln -s $(pwd)/macos-wechat-sender ~/.openclaw/workspace/skills/macos-wechat-sende
 - "给 XXX 发微信消息"
 - "微信自动发送"
 - "通过 Python 发送微信消息"
+- "给 XXX 发文件"
+- "发送文件到 XXX"
 
 ### 方法三：直接调用脚本
 
