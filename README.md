@@ -72,8 +72,19 @@ send_message("消息内容")
 |------|------|
 | `pyautogui` | 模拟键盘鼠标操作 |
 | `pyperclip` | 解决中文输入问题 |
-| `AppleScript` | 精确关闭所有微信窗口 |
+| `osascript` | 精确关闭微信窗口、复制文件到剪贴板 |
 | `subprocess` | 启动和管理应用 |
+
+### 文件发送原理
+
+文件发送的核心是使用 osascript 将文件复制到剪贴板：
+
+```python
+script = f'set the clipboard to (POSIX file "{abs_file_path}")'
+subprocess.run(['osascript', '-e', script])
+```
+
+然后在微信聊天框中 Cmd+V 粘贴，文件就会作为微信文件消息发送。
 
 ## 常见问题
 
