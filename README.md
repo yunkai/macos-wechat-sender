@@ -97,8 +97,8 @@ A: `search_and_select()` 开始时会按 Escape 确保不在输入模式。
 ### Q: 消息发错了联系人怎么办？
 A: 每次发送前请确保执行了 `clean_window()`。
 
-### Q: 支持发送图片或文件吗？
-A: 当前版本仅支持文本消息。
+### Q: 如何发送文件？
+A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.pdf`
 
 ## 版本历史
 
