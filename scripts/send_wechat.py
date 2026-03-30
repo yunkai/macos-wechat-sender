@@ -25,12 +25,12 @@ pyautogui.FAILSAFE = False
 def clean_window():
     """
     清洁微信窗口状态
-    
+
     为什么需要清洁窗口？
     - 微信可能打开多个窗口（主窗口、搜索弹窗、聊天窗口等）
     - 上一次搜索可能留下搜索框
     - 上一次操作可能选中了某个聊天
-    
+
     清洁步骤：
     1. 打开微信窗口
     2. 使用 System Events 发送 Cmd+W 关闭所有子窗口
@@ -77,10 +77,10 @@ def clean_window():
 def search_and_select(target_name):
     """
     搜索并选中目标联系人
-    
+
     Args:
         target_name: 联系人名称（支持中文）
-    
+
     工作流程：
     1. 按 Escape 确保不在输入模式
     2. Cmd+F 打开搜索框
@@ -89,27 +89,27 @@ def search_and_select(target_name):
     """
     # 将联系人名称复制到剪贴板
     pyperclip.copy(target_name)
-    
+
     # 按 Escape 确保不在输入模式
     pyautogui.press('escape')
     time.sleep(0.05)
-    
+
     # Cmd+F 打开搜索框
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('f')
     pyautogui.keyUp('command')
     time.sleep(0.05)
-    
+
     # Cmd+V 粘贴联系人名称
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('v')
     pyautogui.keyUp('command')
-    
+
     # 等待搜索结果加载
     time.sleep(0.1)
-    
+
     # Enter 确认搜索并打开聊天
     pyautogui.press('return')
     time.sleep(0.05)
@@ -118,7 +118,7 @@ def search_and_select(target_name):
 def send_message(msg):
     """
     发送文本消息
-    
+
     Args:
         msg: 要发送的消息内容（支持中文）
     """
@@ -141,10 +141,10 @@ def send_message(msg):
 def send_file(file_path):
     """
     发送文件（通过剪贴板粘贴）
-    
+
     Args:
         file_path: 要发送的文件路径（支持绝对路径和相对路径）
-    
+
     工作流程：
     1. 确保文件路径是绝对路径
     2. 用 osascript 将文件复制到剪贴板
@@ -154,26 +154,26 @@ def send_file(file_path):
     if not os.path.exists(file_path):
         print(f"❌ 文件不存在: {file_path}")
         return False
-    
+
     # 转换为绝对路径
     abs_file_path = os.path.abspath(file_path)
-    
+
     # 用 osascript 将文件复制到剪贴板
     script = f'set the clipboard to (POSIX file "{abs_file_path}")'
     subprocess.run(['osascript', '-e', script])
-    time.sleep(0.3)
-    
+    time.sleep(1) #等久一点，大文件可能要复制更多时间
+
     # Cmd+V 粘贴文件
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('v')
     pyautogui.keyUp('command')
     time.sleep(0.5)
-    
+
     # 按 Enter 发送
     pyautogui.press('return')
     time.sleep(0.3)
-    
+
     return True
 
 
@@ -190,21 +190,21 @@ def main():
 注意：使用 -f 发送文件时，请确保文件路径是绝对路径。
         '''
     )
-    
+
     parser.add_argument('contact', help='联系人名称')
     parser.add_argument('message', nargs='?', default=None, help='要发送的消息内容')
     parser.add_argument('-f', '--file', dest='file_path', help='要发送的文件路径')
-    
+
     args = parser.parse_args()
-    
+
     # 检查参数
     if not args.message and not args.file_path:
         parser.error('请提供消息内容或文件路径')
-    
+
     # 执行发送流程
     clean_window()
     search_and_select(args.contact)
-    
+
     if args.file_path:
         # 发送文件
         if send_file(args.file_path):
