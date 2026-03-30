@@ -1,6 +1,6 @@
 ---
 name: wechat-send-message
-description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"微信自动发送"、或需要通过 Python 代码控制微信发送消息。
+description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息和文件。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"微信自动发送"、"发文件"、"发送文件"、或需要通过 Python 代码控制微信发送消息或文件。
 version: 1.1.2
 ---
 
