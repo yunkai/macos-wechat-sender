@@ -140,44 +140,49 @@ def send_message(msg):
 
 def send_file(file_path):
     """
-    发送文件
+    发送文件（通过剪贴板粘贴）
     
     Args:
-        file_path: 要发送的文件路径
+        file_path: 要发送的文件路径（支持绝对路径和相对路径）
     
     工作流程：
-    1. 点击附件按钮（+号按钮）
-    2. 选择"文件"选项
-    3. 在文件选择对话框中输入文件路径
-    4. 按 Enter 选择文件
-    5. 再次按 Enter 发送
+    1. 确保文件路径是绝对路径
+    2. 在 Finder 中定位到文件（用 Cmd+Shift+G 前往）
+    3. Cmd+C 复制文件到剪贴板
+    4. 在聊天框中 Cmd+V 粘贴文件
+    5. 按 Enter 发送
     """
     if not os.path.exists(file_path):
         print(f"❌ 文件不存在: {file_path}")
         return False
     
-    # 点击附件按钮（+号按钮，通常在输入框左侧）
-    # 这个位置需要根据实际情况调整，这里使用相对坐标
-    pyautogui.click(x=630, y=695)  # 点击附件按钮
-    time.sleep(0.3)
+    # 转换为绝对路径
+    abs_file_path = os.path.abspath(file_path)
     
-    # 选择"文件"选项（通常在弹出的菜单中）
-    pyautogui.press('down')  # 移到"文件"选项
+    # 关闭当前窗口，打开 Finder
+    pyautogui.press('escape')
     time.sleep(0.1)
-    pyautogui.press('return')  # 选择"文件"
+    
+    # 打开 Finder
+    subprocess.run(["open", "-a", "Finder"])
     time.sleep(0.5)
     
-    # 在文件选择对话框中输入文件路径
-    pyperclip.copy(file_path)
-    time.sleep(0.1)
-    
+    # Cmd+Shift+G 前往文件夹
     pyautogui.keyDown('command')
     time.sleep(0.05)
-    pyautogui.press('g')  # Cmd+G 前往文件夹
+    pyautogui.press('g')
     pyautogui.keyUp('command')
+    time.sleep(0.1)
+    pyautogui.keyDown('shift')
+    time.sleep(0.05)
+    pyautogui.press('g')
+    pyautogui.keyUp('shift')
     time.sleep(0.3)
     
-    # 粘贴文件路径
+    # 输入文件路径
+    pyperclip.copy(abs_file_path)
+    time.sleep(0.1)
+    
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('v')
@@ -186,13 +191,31 @@ def send_file(file_path):
     
     # 按 Enter 进入文件夹
     pyautogui.press('return')
-    time.sleep(0.3)
-    
-    # 按 Enter 选择文件
-    pyautogui.press('return')
     time.sleep(0.5)
     
-    # 再次按 Enter 发送
+    # Cmd+C 复制文件到剪贴板
+    pyautogui.keyDown('command')
+    time.sleep(0.05)
+    pyautogui.press('c')
+    pyautogui.keyUp('command')
+    time.sleep(0.3)
+    
+    # 回到微信窗口
+    subprocess.run(["open", "-a", "WeChat"])
+    time.sleep(0.5)
+    
+    # 点击消息输入框确保在正确位置
+    pyautogui.click(x=400, y=680)
+    time.sleep(0.3)
+    
+    # Cmd+V 粘贴文件
+    pyautogui.keyDown('command')
+    time.sleep(0.05)
+    pyautogui.press('v')
+    pyautogui.keyUp('command')
+    time.sleep(0.5)
+    
+    # 按 Enter 发送
     pyautogui.press('return')
     time.sleep(0.3)
     
