@@ -102,7 +102,7 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
-- **v1.1.2** - 初始版本，支持文本消息发送
+- **v1.2.0** - 初始版本，支持文本消息发送
 
 ## 项目结构
 
@@ -134,10 +134,9 @@ ln -s $(pwd)/macos-wechat-sender ~/.openclaw/workspace/skills/macos-wechat-sende
 
 - "发送微信消息"
 - "给 XXX 发微信消息"
-- "微信自动发送"
-- "通过 Python 发送微信消息"
 - "给 XXX 发文件"
-- "发送文件到 XXX"
+- "微信自动发送"
+- "通过 Python 发送微信消息" "
 
 ### 方法三：直接调用脚本
 
