@@ -40,7 +40,6 @@ python3 scripts/send_wechat.py <联系人> <消息>
 # 示例
 python3 scripts/send_wechat.py 文件传输助手 你好
 python3 scripts/send_wechat.py 小明 -f /path/to/file.pdf
-python3 scripts/send_wechat.py 小明 你好 -f document.docx
 ```
 
 🚨 **重要提醒**：使用前请确保「联系人」的名称完全正确，否则可能会发送给错误的对象！
