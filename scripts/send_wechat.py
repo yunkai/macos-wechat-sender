@@ -323,18 +323,16 @@ def open_link_in_browser(via_contact="文件传输助手"):
         return False
 
     x, y = pos
-    print(f"双击中...")
-    for _ in range(2):
-        e_down = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseDown, (x, y), Quartz.kCGMouseButtonLeft
-        )
-        e_up = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseUp, (x, y), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
-        time.sleep(0.05)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
-        time.sleep(0.1)
+    print(f"单击 ({x}, {y})...")
+    e_down = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseDown, (x, y), Quartz.kCGMouseButtonLeft
+    )
+    e_up = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseUp, (x, y), Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+    time.sleep(0.05)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
 
     print("✅ 已双击，等待文章页面加载...")
     time.sleep(3)
