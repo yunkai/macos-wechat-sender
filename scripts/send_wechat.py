@@ -17,6 +17,8 @@ import subprocess
 import sys
 import os
 import argparse
+import numpy as np
+from PIL import Image
 
 # 禁用 pyautogui 安全保护
 pyautogui.FAILSAFE = False
@@ -439,34 +441,63 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
     time.sleep(3)
 
-    # Step 3: 等待内置浏览器加载，然后点击"转发"按钮
-    print("  [3/5] 等待浏览器加载，点击转发按钮...")
-    time.sleep(3)
+    # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
+    print("  [3/5] 点击右上角菜单按钮...")
 
-    # 尝试在浏览器页面中找到"转发"相关按钮
-    result2 = subprocess.run(
-        ["peekaboo", "see", "--app", "微信", "--json"],
-        capture_output=True, text=True
-    )
-    forward_clicked = False
-    if result2.returncode == 0:
-        try:
-            elements = json.loads(result2.stdout)
-            for el in elements if isinstance(elements, list) else []:
-                label = el.get("label", "")
-                frame = el.get("frame")
-                if frame and ("转发" in label or "forward" in label.lower()):
-                    x, y = frame["x"] + 5, frame["y"] + 5
-                    pyautogui.click(x, y)
-                    forward_clicked = True
-                    print("  [3/5] ✅ 已点击转发按钮")
-                    break
-        except:
-            pass
+    # 确保"微信(窗口)"在最前
+    subprocess.run(["open", "-a", "WeChat"])
+    time.sleep(0.3)
 
-    if not forward_clicked:
-        print("  [3/5] ⚠️ 未自动找到转发按钮，请手动点击")
+    # 获取"微信(窗口)"的边界
+    kExcludeDesktopElements = 2
+    kOnScreenOnly = 1
+    window_list = Quartz.CGWindowListCopyWindowInfo(kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID)
+
+    win_x, win_y, win_w, win_h = None, None, None, None
+    for win in window_list:
+        owner = win.get("kCGWindowOwnerName", "")
+        name = win.get("kCGWindowName", "")
+        if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
+            b = win.get("kCGWindowBounds", {})
+            win_x, win_y = b.get("X"), b.get("Y")
+            win_w, win_h = b.get("Width"), b.get("Height")
+            break
+
+    if win_x is None:
+        print("  [3/5] ⚠️ 未找到微信浏览器窗口")
         return False
+
+    # 用相对比例计算"..."按钮位置
+    # 按钮在窗口右上角: x = 98.3%窗口宽度, y = 窗口顶部+20像素
+    dot_x = int(win_x + win_w * 0.983)
+    dot_y = int(win_y + 20)
+
+    print(f"  窗口: ({win_x},{win_y}) {win_w}x{win_h}")
+    print(f"  点击菜单按钮: ({dot_x}, {dot_y})")
+
+    # 点击"..."按钮
+    print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
+
+    # 点击"..."按钮
+    print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
+    e_down = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseDown, (dot_x, dot_y), Quartz.kCGMouseButtonLeft
+    )
+    e_up = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseUp, (dot_x, dot_y), Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+    time.sleep(0.05)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+    time.sleep(0.8)  # 等待菜单出现
+
+    # 按向下键选中"转发给朋友"，按回车确认
+    print("  选择「转发给朋友」...")
+    pyautogui.press('down')
+    time.sleep(0.3)
+    pyautogui.press('return')
+    time.sleep(1)
+    print("  [3/5] ✅ 已打开转发浮窗")
 
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
