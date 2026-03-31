@@ -288,8 +288,8 @@ def find_green_bubble_and_click():
             current_block = [bubble_rows[i]]
     bubble_blocks.append(current_block)
 
-    # 选最大的块（面积最大 = 最新消息）
-    best_block = max(bubble_blocks, key=lambda b: len(b) * (max(x[2] for x in b) - min(x[1] for x in b)))
+    # 选最底部的块（y 值最大 = 最新消息）
+    best_block = max(bubble_blocks, key=lambda b: max(row[0] for row in b))
 
     # 计算该块的上下边缘和左右边缘
     block_top = min(row[0] for row in best_block)
