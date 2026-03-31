@@ -284,28 +284,44 @@ def find_green_bubble_and_click():
 
     print(f"气泡区域(屏幕): x={x_min}-{x_max}, y={y_min}-{y_max}")
 
-    # OCR 验证：对气泡区域截图，确认识别到 URL
-    import pytesseract
-    # 扩大一点区域以完整包含文字
-    crop_x1 = max(0, x_min - 10)
-    crop_y1 = max(0, y_min - 10)
-    crop_x2 = min(screen_w, x_max + 10)
-    crop_y2 = min(screen_h, y_max + 10)
-    bubble_img = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-    bubble_text = pytesseract.image_to_string(bubble_img, config='--psm 7').strip()
-    print(f"  OCR 识别: {bubble_text[:80]!r}")
-    # 判断是否是 URL 链接
-    is_url = 'mp.weixin.qq.com' in bubble_text or 'http' in bubble_text.lower()
-    if not is_url:
-        print("  ⚠️ 气泡内未识别到 URL，可能不是链接，跳过点击")
-        return None
-
-    # URL 文字在气泡偏下、偏右的位置
+    # Triple-click 验证：对气泡区域行进行 Triple-Click 选中整行，
+    # 复制到剪贴板，验证是否是 URL
     click_x = int(x_min + (x_max - x_min) * 0.80)
     click_y = int(y_min + (y_max - y_min) * 0.70)
 
-    print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
+    # 先 Triple-click 选中整行文字
+    for i in range(3):
+        e_down = Quartz.CGEventCreateMouseEvent(
+            None, Quartz.kCGEventLeftMouseDown, (click_x, click_y), Quartz.kCGMouseButtonLeft
+        )
+        e_up = Quartz.CGEventCreateMouseEvent(
+            None, Quartz.kCGEventLeftMouseUp, (click_x, click_y), Quartz.kCGMouseButtonLeft
+        )
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+        time.sleep(0.05)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+        time.sleep(0.1)
 
+    time.sleep(0.2)
+
+    # Cmd+C 复制选中内容
+    pyautogui.keyDown('command')
+    time.sleep(0.05)
+    pyautogui.press('c')
+    pyautogui.keyUp('command')
+    time.sleep(0.3)
+
+    # 读取剪贴板内容
+    copied_text = pyperclip.paste()
+    print(f"  Triple-click 复制: {copied_text[:80]!r}")
+
+    # 验证是否是 URL
+    is_url = 'mp.weixin.qq.com' in copied_text or copied_text.startswith('http')
+    if not is_url:
+        print("  ⚠️ Triple-click 选中内容不是 URL 链接，跳过点击")
+        return None
+
+    print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
     return (click_x, click_y)
 
 
