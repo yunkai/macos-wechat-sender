@@ -595,8 +595,8 @@ def main():
 使用示例：
   python3 send_wechat.py 文件传输助手 你好
   python3 send_wechat.py 小明 -f /path/to/file.pdf
-  python3 send_wechat.py 小明 你好 -f document.docx
-  python3 send_wechat.py --forward-article "https://mp.weixin.qq.com/s/xxx" 目标联系人
+  python3 send_wechat.py 小明 -f document.docx
+  python3 send_wechat.py 家人群 -l "https://mp.weixin.qq.com/s/xxx"
 
 注意：使用 -f 发送文件时，请确保文件路径是绝对路径。
         '''
@@ -605,7 +605,7 @@ def main():
     parser.add_argument('contact', nargs='?', help='联系人名称')
     parser.add_argument('message', nargs='?', default=None, help='要发送的消息内容')
     parser.add_argument('-f', '--file', dest='file_path', help='要发送的文件路径')
-    parser.add_argument('--url', dest='article_url', help='要转发的公众号文章URL')
+    parser.add_argument('-l', '--url', dest='article_url', help='要转发的公众号文章URL')
     parser.add_argument('--via', dest='via_contact', default='文件传输助手',
                         help='作为跳板的中间联系人（默认文件传输助手）')
 
