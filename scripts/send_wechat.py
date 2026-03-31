@@ -50,12 +50,12 @@ def clean_window():
         tell application "System Events"
             tell process "WeChat"
                 set frontmost to true
-                keystroke (ASCII character 27)
+                key code 53
             end tell
         end tell
         '''
         subprocess.run(['osascript', '-e', escape_script])
-        time.sleep(0.05)
+        time.sleep(0.3)  # 多等一会，让浮窗有时间关闭
 
         script = '''
         tell application "System Events"
