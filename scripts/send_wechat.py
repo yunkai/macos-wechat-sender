@@ -441,7 +441,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
         time.sleep(0.1)
     print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
-    time.sleep(2)
+    time.sleep(1)
 
     # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
     print("  [3/5] 点击右上角菜单按钮...")
