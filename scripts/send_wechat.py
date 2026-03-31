@@ -194,14 +194,15 @@ def send_file(file_path):
 
 def find_green_bubble_and_click():
     """
-    通过截图分析，找到微信聊天窗口中最新的绿色消息气泡，
-    并计算点击位置（气泡偏下区域，URL文字通常在这里）。
+    通过截图分析，从聊天框底部往上扫描，找到最新绿色消息气泡的上下边缘，
+    计算气泡中间位置作为点击坐标。
 
     工作流程：
     1. 用 open -a WeChat 激活微信到前台
     2. 用 CGWindowListCopyWindowInfo 获取微信窗口的真实屏幕坐标
-    3. 截取全屏截图，在微信窗口区域内找绿色气泡
-    4. 计算点击坐标并双击
+    3. 截取全屏截图，从聊天框底部往上逐行扫描找绿色气泡
+    4. 找到气泡顶部和底部边缘，计算中间位置
+    5. Triple-click 验证是否是 URL，是则返回点击坐标
 
     Returns:
         tuple: (x, y) 屏幕坐标，点击失败返回 None
@@ -213,7 +214,7 @@ def find_green_bubble_and_click():
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.5)
 
-    # Step 2: 用 CGWindowListCopyWindowInfo 获取微信窗口的真实屏幕坐标
+    # Step 2: 获取微信窗口坐标
     kExcludeDesktopElements = 2
     kOnScreenOnly = 1
     window_list = Quartz.CGWindowListCopyWindowInfo(
@@ -227,69 +228,83 @@ def find_green_bubble_and_click():
             b = win.get("kCGWindowBounds", {})
             x, y = b.get("X", 0), b.get("Y", 0)
             w, h = b.get("Width", 0), b.get("Height", 0)
-            layer = win.get("kCGWindowLayer", 0)
-            if w > 100 and h > 100:  # 过滤掉很小的窗口
-                wechat_wins.append((x, y, w, h, layer))
+            if w > 100 and h > 100:
+                wechat_wins.append((x, y, w, h))
 
     if not wechat_wins:
         print("未找到微信窗口")
         return None
 
-    # 按面积排序，取最大的窗口（主窗口）
-    wechat_wins.sort(key=lambda w: w[2] * w[3], reverse=True)
-    wx, wy, ww, wh = wechat_wins[0][:4]
-    print(f"微信主窗口: ({wx},{wy}) {ww}x{wh}")
+    # 取非全屏的普通窗口（排除全屏窗口）
+    normal_wins = [w for w in wechat_wins if w[2] < 1400]  # 全屏窗口宽约 1512
+    wins_to_use = normal_wins if normal_wins else wechat_wins
+    wins_to_use.sort(key=lambda w: w[2] * w[3], reverse=True)
+    wx, wy, ww, wh = wins_to_use[0]
+    print(f"微信窗口: ({wx},{wy}) {ww}x{wh}")
 
-    # Step 3: 截取全屏截图
+    # Step 3: 截图
     subprocess.run([
         "peekaboo", "image", "--mode", "screen", "--path", "/tmp/wechat_bubble.png"
     ])
 
-    # Step 4: 分析截图，在微信窗口区域内找绿色气泡
+    # Step 4: 从底部往上扫描，找绿色气泡的上下边缘
     img = Image.open("/tmp/wechat_bubble.png").convert("RGB")
     arr = np.array(img, dtype=np.int32)
     screen_h, screen_w = arr.shape[:2]
 
-    # 确定扫描区域（排除左侧栏约 25% 宽度）
+    # 扫描区域
     scan_x1 = int(wx + ww * 0.25)
     scan_x2 = int(wx + ww - 10)
-    scan_y1 = int(wy + 50)
-    scan_y2 = int(wy + wh - 30)
+    scan_y_bottom = int(wy + wh - 30)   # 从底部开始
+    scan_y_top = int(wy + 50)             # 到顶部为止
 
-    greens = []
-    for y in range(scan_y1, min(scan_y2, screen_h - 5), 2):
-        for x in range(scan_x1, min(scan_x2, screen_w - 5), 2):
-            r, g, b = arr[y, x, 0], arr[y, x, 1], arr[y, x, 2]
-            if g > r + 25 and g > b + 25 and 120 < g < 225 and r < 180 and b < 180:
-                greens.append((x, y))
+    def is_green(pixel):
+        r, g, b = pixel[0], pixel[1], pixel[2]
+        return g > r + 25 and g > b + 25 and 120 < g < 225 and r < 180 and b < 180
 
-    if not greens:
+    # 从底部往上逐行扫描，记录每行是否有绿色
+    bubble_rows = []
+    for y in range(scan_y_bottom, scan_y_top, -2):
+        row_greens = []
+        for x in range(scan_x1, min(scan_x2, screen_w - 5), 4):
+            if is_green(arr[y, x]):
+                row_greens.append(x)
+        if row_greens:
+            bubble_rows.append((y, min(row_greens), max(row_greens)))
+
+    if not bubble_rows:
         print("未找到绿色气泡")
         return None
 
-    # 按 y 降序，找最新消息（y 最大）
-    greens.sort(key=lambda p: p[1], reverse=True)
-    top_y = greens[0][1]
+    # 合并连续的行，形成气泡块
+    # 找出最大的连续绿色块（最新消息在最底部）
+    bubble_blocks = []
+    current_block = [bubble_rows[0]]
+    for i in range(1, len(bubble_rows)):
+        if bubble_rows[i][0] <= bubble_rows[i-1][0] + 4:  # 行连续（间隔 <= 4px）
+            current_block.append(bubble_rows[i])
+        else:
+            bubble_blocks.append(current_block)
+            current_block = [bubble_rows[i]]
+    bubble_blocks.append(current_block)
 
-    # 取 top_y 附近的消息（最新一条）
-    latest = [(x, y) for x, y in greens if y >= top_y - 80]
+    # 选最大的块（面积最大 = 最新消息）
+    best_block = max(bubble_blocks, key=lambda b: len(b) * (max(x[2] for x in b) - min(x[1] for x in b)))
 
-    if not latest:
-        return None
+    # 计算该块的上下边缘和左右边缘
+    block_top = min(row[0] for row in best_block)
+    block_bottom = max(row[0] for row in best_block)
+    block_left = min(min(row[1] for row in best_block), min(row[2] for row in best_block))
+    block_right = max(max(row[1] for row in best_block), max(row[2] for row in best_block))
 
-    xs = [p[0] for p in latest]
-    ys = [p[1] for p in latest]
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
+    print(f"气泡边缘: 左={block_left} 右={block_right} 上={block_top} 下={block_bottom}")
 
-    print(f"气泡区域(屏幕): x={x_min}-{x_max}, y={y_min}-{y_max}")
+    # 计算中间位置
+    click_x = int((block_left + block_right) // 2)
+    click_y = int((block_top + block_bottom) // 2)
+    print(f"点击位置(屏幕): ({click_x}, {click_y})")
 
-    # Triple-click 验证：对气泡区域行进行 Triple-Click 选中整行，
-    # 复制到剪贴板，验证是否是 URL
-    click_x = int(x_min + (x_max - x_min) * 0.80)
-    click_y = int(y_min + (y_max - y_min) * 0.70)
-
-    # 先 Triple-click 选中整行文字
+    # Step 5: Triple-click 验证 URL
     for i in range(3):
         e_down = Quartz.CGEventCreateMouseEvent(
             None, Quartz.kCGEventLeftMouseDown, (click_x, click_y), Quartz.kCGMouseButtonLeft
@@ -304,24 +319,20 @@ def find_green_bubble_and_click():
 
     time.sleep(0.2)
 
-    # Cmd+C 复制选中内容
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('c')
     pyautogui.keyUp('command')
     time.sleep(0.3)
 
-    # 读取剪贴板内容
     copied_text = pyperclip.paste()
     print(f"  Triple-click 复制: {copied_text[:80]!r}")
 
-    # 验证是否是 URL
     is_url = 'mp.weixin.qq.com' in copied_text or copied_text.startswith('http')
     if not is_url:
         print("  ⚠️ Triple-click 选中内容不是 URL 链接，跳过点击")
         return None
 
-    print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
     return (click_x, click_y)
 
 
