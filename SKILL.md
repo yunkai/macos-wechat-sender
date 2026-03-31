@@ -1,10 +1,10 @@
 ---
 name: wechat-send-message
-description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息和文件。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、或需要通过 Python 代码控制微信发送消息或文件。
+description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息、文件和公众号文章卡片转发。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、"转发文章"、或需要通过 Python 代码控制微信发送消息或文件。
 version: 1.2.0
 ---
 
-# WeChat Send Message v1.2.0
+# WeChat Send Message v1.4.0
 
 在 Mac 上自动化发送微信消息的技能。
 
@@ -166,6 +166,52 @@ wechat-send-message/
 └── scripts/
     └── send_wechat.py    # 可执行的发送脚本
 ```
+
+## 转发公众号文章（卡片形式）
+
+微信公众号文章的链接直接粘贴到微信里只会显示普通文本链接，无法生成卡片。如果需要以**卡片式链接**转发文章，必须通过微信内置浏览器的转发功能。
+
+### 原理
+
+微信内置浏览器打开文章后，文章页面会有一个「转发」按钮。点击转发后，选择联系人并发送，微信会自动生成带缩略图和标题的卡片样式。
+
+### 工作流程
+
+1. **发送链接到跳板联系人**（默认用"文件传输助手"）
+2. **自动定位**：程序通过 CGWindowList 获取微信窗口坐标，截图分析绿色气泡区域，计算链接文字位置，双击打开文章（完全自动，无需人工干预）
+3. **点击"转发"按钮**，弹出联系人选择浮窗
+4. **在浮窗中搜索目标联系人** → 向下键选中 → 回车确认
+5. **点击"发送"按钮**，文章以卡片形式发出
+
+### 命令行使用
+
+```bash
+python3 send_wechat.py <目标联系人> --forward-article "https://mp.weixin.qq.com/s/xxx"
+
+# 示例：将文章转发给"老王"
+python3 send_wechat.py 老王 --forward-article "https://mp.weixin.qq.com/s/abc123"
+
+# 通过其他联系人作为跳板（默认是文件传输助手）
+python3 send_wechat.py 老王 --forward-article "https://mp.weixin.qq.com/s/abc123" --via 文件传输助手
+```
+
+### 作为模块导入
+
+```python
+from send_wechat import forward_article_via_browser
+
+# 将文章转发给指定联系人（卡片形式）
+forward_article_via_browser(
+    article_url="https://mp.weixin.qq.com/s/abc123",
+    target_contact="老王"
+)
+```
+
+⚠️ **注意事项**
+- `--forward-article` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
+- 跳板联系人默认是"文件传输助手"，可通过 `--via` 参数修改
+- 步骤2（点击链接）完全自动化：程序通过 CGWindowList 获取微信窗口实时坐标，截图分析绿色气泡找到最新链接，双击打开文章
+- 此功能依赖 CGEvent（Quartz）和 CGWindowListCopyWindowInfo，无法通过 UI 自动化工具替代
 
 ## 使用方法
 
