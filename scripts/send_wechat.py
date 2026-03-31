@@ -195,14 +195,14 @@ def send_file(file_path):
 def find_green_bubble_and_click():
     """
     通过截图分析，从聊天框底部往上扫描，找到最新绿色消息气泡的上下边缘，
-    计算气泡中间位置作为点击坐标。
+    计算气泡中间位置作为点击坐标，直接点击打开 URL。
 
     工作流程：
     1. 用 open -a WeChat 激活微信到前台
     2. 用 CGWindowListCopyWindowInfo 获取微信窗口的真实屏幕坐标
     3. 截取全屏截图，从聊天框底部往上逐行扫描找绿色气泡
     4. 找到气泡顶部和底部边缘，计算中间位置
-    5. Triple-click 验证是否是 URL，是则返回点击坐标
+    5. 直接返回点击坐标（由调用方负责点击）
 
     Returns:
         tuple: (x, y) 屏幕坐标，点击失败返回 None
@@ -302,37 +302,7 @@ def find_green_bubble_and_click():
     # 计算中间位置
     click_x = int((block_left + block_right) // 2)
     click_y = int((block_top + block_bottom) // 2)
-    print(f"点击位置(屏幕): ({click_x}, {click_y})")
-
-    # Step 5: Triple-click 验证 URL
-    for i in range(3):
-        e_down = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseDown, (click_x, click_y), Quartz.kCGMouseButtonLeft
-        )
-        e_up = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseUp, (click_x, click_y), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
-        time.sleep(0.05)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
-        time.sleep(0.1)
-
-    time.sleep(0.2)
-
-    pyautogui.keyDown('command')
-    time.sleep(0.05)
-    pyautogui.press('c')
-    pyautogui.keyUp('command')
-    time.sleep(0.3)
-
-    copied_text = pyperclip.paste()
-    print(f"  Triple-click 复制: {copied_text[:80]!r}")
-
-    is_url = 'mp.weixin.qq.com' in copied_text or copied_text.startswith('http')
-    if not is_url:
-        print("  ⚠️ Triple-click 选中内容不是 URL 链接，跳过点击")
-        return None
-
+    print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
     return (click_x, click_y)
 
 
