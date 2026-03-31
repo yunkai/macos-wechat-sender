@@ -553,29 +553,30 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     time.sleep(0.3)
     print("  [4/5] ✅ 已选中介联系人")
 
-    # Step 5: 点击发送按钮
+    # Step 5: 点击发送按钮（使用 EasyOCR 定位"发送"文字）
     print("  [5/5] 点击发送按钮...")
     time.sleep(0.5)
 
-    result3 = subprocess.run(
-        ["peekaboo", "see", "--app", "微信", "--json"],
-        capture_output=True, text=True
-    )
+    # 截图
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/send_button.png"])
+
+    # 用 EasyOCR 找"发送"按钮
+    import easyocr
+    reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
+    ocr_results = reader.readtext("/tmp/send_button.png", detail=1)
+
     send_clicked = False
-    if result3.returncode == 0:
-        try:
-            elements = json.loads(result3.stdout)
-            for el in elements if isinstance(elements, list) else []:
-                label = el.get("label", "")
-                frame = el.get("frame")
-                if frame and ("发送" in label or "send" in label.lower()):
-                    x, y = frame["x"] + 5, frame["y"] + 5
-                    pyautogui.click(x, y)
-                    send_clicked = True
-                    print("  [5/5] ✅ 已点击发送按钮")
-                    break
-        except:
-            pass
+    for (bbox, text, prob) in ocr_results:
+        if "发送" in text:
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            cx = int((min(xs) + max(xs)) // 2)
+            cy = int((min(ys) + max(ys)) // 2)
+            print(f"  找到发送按钮: ({cx}, {cy})")
+            pyautogui.click(cx, cy)
+            send_clicked = True
+            print("  [5/5] ✅ 已点击发送按钮")
+            break
 
     if not send_clicked:
         print("  [5/5] ⚠️ 未自动找到发送按钮，请手动点击")
