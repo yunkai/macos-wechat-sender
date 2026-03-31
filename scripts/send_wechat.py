@@ -19,6 +19,10 @@ import os
 import argparse
 import numpy as np
 from PIL import Image
+import easyocr
+
+# 全局 EasyOCR 阅读器（启动时初始化一次）
+EASYOCR_READER = easyocr.Reader(["ch_sim", "en"], gpu=False)
 
 # 禁用 pyautogui 安全保护
 pyautogui.FAILSAFE = False
@@ -257,9 +261,7 @@ def find_url_text_and_click():
     scan_y_top = int(wy + 50)             # 到顶部为止
 
     # 使用 EasyOCR 识别截图中的 URL 文字区域
-    import easyocr
-    reader = easyocr.Reader(['en'], gpu=False)
-    ocr_results = reader.readtext("/tmp/wechat_bubble.png", detail=1)
+    ocr_results = EASYOCR_READER.readtext("/tmp/wechat_bubble.png", detail=1)
 
     url_results = []
     for (bbox, text, prob) in ocr_results:
@@ -561,9 +563,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/send_button.png"])
 
     # 用 EasyOCR 找"发送"按钮
-    import easyocr
-    reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
-    ocr_results = reader.readtext("/tmp/send_button.png", detail=1)
+    ocr_results = EASYOCR_READER.readtext("/tmp/send_button.png", detail=1)
 
     send_clicked = False
     for (bbox, text, prob) in ocr_results:
