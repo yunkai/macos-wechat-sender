@@ -35,8 +35,9 @@ def clean_window():
 
     清洁步骤：
     1. 打开微信窗口
-    2. 使用 System Events 发送 Cmd+W 关闭所有子窗口
-    3. 重复直到窗口全部关闭
+    2. 先发送 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 直接关闭）
+    3. 使用 System Events 发送 Cmd+W 关闭所有子窗口
+    4. 重复直到窗口全部关闭
     """
     # 打开微信
     subprocess.run(["open", "-a", "WeChat"])
@@ -44,6 +45,18 @@ def clean_window():
 
     # 使用 AppleScript + System Events 精确关闭所有窗口
     for i in range(10):
+        # 先按 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 关闭）
+        escape_script = '''
+        tell application "System Events"
+            tell process "WeChat"
+                set frontmost to true
+                keystroke (ASCII character 27)
+            end tell
+        end tell
+        '''
+        subprocess.run(['osascript', '-e', escape_script])
+        time.sleep(0.05)
+
         script = '''
         tell application "System Events"
             tell process "WeChat"
@@ -354,7 +367,7 @@ def send_link(url):
     pyautogui.keyUp('command')
     time.sleep(0.05)
     pyautogui.press('return')
-    time.sleep(0.05)
+    time.sleep(1) #对话框加载完
 
 
 def find_and_click_element(label_pattern, regex=False):
