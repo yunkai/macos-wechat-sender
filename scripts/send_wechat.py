@@ -567,7 +567,8 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
 
     send_clicked = False
     for (bbox, text, prob) in ocr_results:
-        if "发送" in text:
+        # 精确匹配"发送"按钮（排除"发送给"窗口标题）
+        if text.strip() == "发送":
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             cx = int((min(xs) + max(xs)) // 2)
