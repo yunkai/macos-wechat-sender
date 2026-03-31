@@ -195,15 +195,19 @@ def send_file(file_path):
     return True
 
 
-def find_url_text_and_click():
+def find_url_text_and_click(target_url=None):
     """
-    通过 RapidOCR 识别截图中的 URL 文字区域，找到最新消息的 URL 中心点作为点击坐标。
+    通过 RapidOCR 识别截图中的 URL 文字区域，找到目标 URL 的中心点作为点击坐标。
+
+    Args:
+        target_url: 要点击的目标 URL（模糊匹配），如果指定则只点击匹配的 URL
 
     工作流程：
     1. 用 open -a WeChat 激活微信到前台
     2. 截取全屏截图
     3. 用 RapidOCR 识别所有包含 "weixin" 或 "http" 的文字
-    4. 取 y 坐标最大的（最底部 = 最新消息）的 URL 区域中心作为点击坐标
+    4. 如果指定了 target_url，优先找与之匹配的 URL
+    5. 否则取 y 坐标最大的（最底部 = 最新消息）的 URL 区域中心作为点击坐标
 
     Returns:
         tuple: (x, y) 屏幕坐标，点击失败返回 None
@@ -281,8 +285,31 @@ def find_url_text_and_click():
         print("⚠️ RapidOCR 未找到 URL")
         return None
 
-    # 取最底部的 URL（y 最大 = 最新消息）
-    best = max(url_results, key=lambda x: x[1])
+    # 如果指定了目标 URL，优先找匹配的
+    best = None
+    if target_url:
+        # 提取目标 URL 的关键部分用于匹配（如 biz 和 mid）
+        import re
+        biz_match = re.search(r'__biz=([^&]+)', target_url)
+        biz_key = biz_match.group(1) if biz_match else ""
+        mid_match = re.search(r'mid=(\d+)', target_url)
+        mid_key = mid_match.group(1) if mid_match else ""
+
+        for result in url_results:
+            _, _, text, _ = result
+            # 检查 URL 是否包含相同的关键参数
+            text_biz = re.search(r'__biz=([^&]+)', text) if isinstance(text, str) else None
+            text_mid = re.search(r'mid=(\d+)', text) if isinstance(text, str) else None
+            biz_ok = not biz_match or (text_biz and text_biz.group(1) == biz_key)
+            mid_ok = not mid_match or (text_mid and text_mid.group(1) == mid_key)
+            if biz_ok and mid_ok:
+                best = result
+                print(f"  [匹配] 找到目标 URL: {text[:50]}")
+                break
+
+    # 如果没找到匹配的，取最底部的 URL
+    if not best:
+        best = max(url_results, key=lambda x: x[1])
     click_x, click_y, text, prob = best
     print(f"RapidOCR URL: {text!r} 置信度: {prob:.2f}")
     print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
@@ -477,7 +504,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
 
     # Step 2: 自动找气泡并双击打开链接
     print("  [2/5] 自动定位链接位置...")
-    pos = find_url_text_and_click()
+    pos = find_url_text_and_click(article_url)
     if pos is None:
         print("  [2/5] ⚠️ 未找到链接，请手动点击")
         return False
