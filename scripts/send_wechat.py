@@ -312,7 +312,6 @@ def open_link_in_browser(via_contact="文件传输助手"):
 
     # 搜索并选中跳板联系人
     search_and_select(via_contact)
-    time.sleep(0.5)
 
     # 自动找气泡并点击
     pos = find_green_bubble_and_click()
@@ -339,9 +338,9 @@ def open_link_in_browser(via_contact="文件传输助手"):
     return True
 
 
-def send_link(url, wait=2.5):
+def send_link(url):
     """
-    发送链接（URL），微信会自动生成预览卡片
+     直接发送链接（URL），微信不会自动生成预览卡片
 
     Args:
         url: 要发送的链接
@@ -353,9 +352,9 @@ def send_link(url, wait=2.5):
     time.sleep(0.05)
     pyautogui.press('v')
     pyautogui.keyUp('command')
-    time.sleep(wait)
+    time.sleep(0.05)
     pyautogui.press('return')
-    time.sleep(0.3)
+    time.sleep(0.05)
 
 
 def find_and_click_element(label_pattern, regex=False):
