@@ -6,6 +6,8 @@
 
 - ✅ 支持给任意微信联系人发送消息
 - ✅ 支持中文消息
+- ✅ 支持文件发送
+- ✅ 支持公众号文章卡片转发（EasyOCR 自动化）
 - ✅ 跨平台支持（仅限 macOS）
 - ✅ 简单易用的 API
 
@@ -30,7 +32,7 @@ cd macos-wechat-sender
 ### 2. 安装依赖
 
 ```bash
-pip3 install pyautogui pyperclip
+pip3 install pyautogui pyperclip easyocr numpy pillow
 ```
 
 ## 使用方法
@@ -64,10 +66,19 @@ send_message("消息内容")
 
 ## 工作原理
 
-1. **clean_window()** - 打开微信窗口，关闭所有子窗口，确保窗口状态干净
+1. **clean_window()** - 打开微信窗口，先按 Escape 关闭浮窗，再关闭所有子窗口，确保窗口状态干净
 2. **search_and_select(target_name)** - Cmd+F 打开搜索框，粘贴并搜索联系人名称，Enter 打开聊天
 3. **send_message(msg)** - 粘贴消息内容，Enter 发送文本消息
 4. **send_file(file_path)** - osascript 复制文件到剪贴板，Cmd+V 粘贴，Enter 发送文件
+5. **forward_article_via_browser(url, target)** - 发送链接到跳板联系人 → EasyOCR 定位 URL 单击打开文章 → 转发菜单 → 搜索目标联系人 → 发送按钮，文章以卡片形式发出
+
+## 公众号文章卡片转发
+
+使用 `--forward-article` 参数，可将公众号文章以**卡片形式**转发给指定联系人：
+
+```bash
+python3 scripts/send_wechat.py 阅品阁休息茶室 --forward-article "https://mp.weixin.qq.com/s/xxx"
+```
 
 ## 关键技术点
 
@@ -105,6 +116,7 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
+- **v1.5.0** - 新增公众号文章卡片转发功能（EasyOCR URL 识别 + 转发浮窗自动化）
 - **v1.2.0** - 初始版本，支持文本消息发送
 
 ## 项目结构

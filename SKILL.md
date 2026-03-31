@@ -1,10 +1,10 @@
 ---
 name: wechat-send-message
 description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息、文件和公众号文章卡片转发。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、"转发文章"、或需要通过 Python 代码控制微信发送消息或文件。
-version: 1.2.0
+version: 1.5.0
 ---
 
-# WeChat Send Message v1.4.0
+# WeChat Send Message v1.5.0
 
 在 Mac 上自动化发送微信消息的技能。
 
@@ -28,10 +28,11 @@ version: 1.2.0
 
 ## 工作流程
 
-1. **clean_window()** - 打开微信窗口，使用 AppleScript 关闭所有子窗口，确保窗口处于干净状态
+1. **clean_window()** - 打开微信窗口，先按 Escape 关闭浮窗，再用 Cmd+W 关闭所有子窗口，确保窗口处于干净状态
 2. **search_and_select(target_name)** - 按 Escape 确保不在输入模式，Cmd+F 打开搜索框，粘贴联系人名称并搜索，Enter 打开聊天
 3. **send_message(msg)** - 粘贴消息内容，Enter 发送文本消息
 4. **send_file(file_path)** - osascript 复制文件到剪贴板，Cmd+V 粘贴，Enter 发送文件
+5. **forward_article_via_browser(url, target)** - 发送链接到跳板联系人 → EasyOCR 定位 URL 单击打开文章 → 转发菜单 → 搜索目标联系人 → 发送按钮，文章以卡片形式发出
 
 ## 核心代码模板
 
@@ -53,6 +54,18 @@ def clean_window():
 
     # 使用 AppleScript + System Events 精确关闭所有窗口
     for i in range(10):
+        # 先按 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 直接关闭）
+        escape_script = '''
+        tell application "System Events"
+            tell process "WeChat"
+                set frontmost to true
+                key code 53
+            end tell
+        end tell
+        '''
+        subprocess.run(['osascript', '-e', escape_script])
+        time.sleep(0.3)
+
         script = '''
         tell application "System Events"
             tell process "WeChat"
@@ -63,16 +76,6 @@ def clean_window():
         '''
         subprocess.run(['osascript', '-e', script])
         time.sleep(0.05)
-
-        # 检查是否还有窗口
-        check = '''...'''
-        result = subprocess.run(['osascript', '-e', check], capture_output=True, text=True)
-        try:
-            count = int(result.stdout.strip())
-            if count == 0:
-                break
-        except:
-            pass
 
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.1)
@@ -156,7 +159,7 @@ send_message(MESSAGE)
 
 ```bash
 # 安装 Python 依赖
-pip3 install pyautogui pyperclip
+pip3 install pyautogui pyperclip easyocr numpy pillow
 ```
 
 ⚠️ **注意**：微信桌面客户端必须是已登录状态，此脚本才能正常发送消息。
@@ -181,10 +184,10 @@ wechat-send-message/
 ### 工作流程
 
 1. **发送链接到跳板联系人**（默认用"文件传输助手"）
-2. **自动定位**：程序通过 CGWindowList 获取微信窗口坐标，截图分析绿色气泡区域，计算链接文字位置，双击打开文章（完全自动，无需人工干预）
-3. **点击"转发"按钮**，弹出联系人选择浮窗
-4. **在浮窗中搜索目标联系人** → 向下键选中 → 回车确认
-5. **点击"发送"按钮**，文章以卡片形式发出
+2. **自动定位**：程序截图后用 EasyOCR 识别聊天中的 URL 文字区域，计算 URL 中心位置，单击打开文章（完全自动，无需人工干预）
+3. **点击"..."菜单** → 选择"转发给朋友"，弹出转发浮窗
+4. **在浮窗中搜索目标联系人** → Cmd+F 打开搜索 → 粘贴联系人名称 → 向下键选中 → 回车确认
+5. **点击"发送"按钮**（EasyOCR 精确识别"发送"文字位置），文章以卡片形式发出
 
 ### 命令行使用
 
@@ -213,8 +216,9 @@ forward_article_via_browser(
 ⚠️ **注意事项**
 - `--forward-article` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
 - 跳板联系人默认是"文件传输助手"，可通过 `--via` 参数修改
-- 步骤2（点击链接）完全自动化：程序通过 CGWindowList 获取微信窗口实时坐标，截图分析绿色气泡找到最新链接，双击打开文章
-- 此功能依赖 CGEvent（Quartz）和 CGWindowListCopyWindowInfo，无法通过 UI 自动化工具替代
+- 步骤2（点击链接）完全自动化：程序通过 EasyOCR 识别聊天中的 URL 文字区域，单击打开文章
+- 此功能依赖 CGEvent（Quartz）、CGWindowListCopyWindowInfo 和 EasyOCR
+- 首次使用 EasyOCR 会下载模型（约 300MB），后续调用直接复用
 
 ## 使用方法
 
