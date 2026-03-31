@@ -284,6 +284,22 @@ def find_green_bubble_and_click():
 
     print(f"气泡区域(屏幕): x={x_min}-{x_max}, y={y_min}-{y_max}")
 
+    # OCR 验证：对气泡区域截图，确认识别到 URL
+    import pytesseract
+    # 扩大一点区域以完整包含文字
+    crop_x1 = max(0, x_min - 10)
+    crop_y1 = max(0, y_min - 10)
+    crop_x2 = min(screen_w, x_max + 10)
+    crop_y2 = min(screen_h, y_max + 10)
+    bubble_img = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+    bubble_text = pytesseract.image_to_string(bubble_img, config='--psm 7').strip()
+    print(f"  OCR 识别: {bubble_text[:80]!r}")
+    # 判断是否是 URL 链接
+    is_url = 'mp.weixin.qq.com' in bubble_text or 'http' in bubble_text.lower()
+    if not is_url:
+        print("  ⚠️ 气泡内未识别到 URL，可能不是链接，跳过点击")
+        return None
+
     # URL 文字在气泡偏下、偏右的位置
     click_x = int(x_min + (x_max - x_min) * 0.80)
     click_y = int(y_min + (y_max - y_min) * 0.70)
@@ -451,7 +467,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
         time.sleep(0.1)
     print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
-    time.sleep(3)
+    time.sleep(2)
 
     # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
     print("  [3/5] 点击右上角菜单按钮...")
