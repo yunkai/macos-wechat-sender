@@ -277,31 +277,18 @@ def find_green_bubble_and_click():
         return None
 
     # 合并连续的行，形成气泡块
-    # 找出连续的绿色块（最新消息在最底部）
     bubble_blocks = []
     current_block = [bubble_rows[0]]
     for i in range(1, len(bubble_rows)):
-        if bubble_rows[i][0] <= bubble_rows[i-1][0] + 4:  # 行连续（间隔 <= 4px）
+        if bubble_rows[i][0] <= bubble_rows[i-1][0] + 4:
             current_block.append(bubble_rows[i])
         else:
             bubble_blocks.append(current_block)
             current_block = [bubble_rows[i]]
     bubble_blocks.append(current_block)
 
-    # 过滤：单个气泡高度不超过 200px，否则是多个气泡合并了
-    valid_blocks = []
-    for block in bubble_blocks:
-        block_top = min(row[0] for row in block)
-        block_bottom = max(row[0] for row in block)
-        if block_bottom - block_top <= 200:
-            valid_blocks.append(block)
-
-    if not valid_blocks:
-        print("未找到有效气泡块")
-        return None
-
     # 选最底部的块（y 值最大 = 最新消息）
-    best_block = max(valid_blocks, key=lambda b: max(row[0] for row in b))
+    best_block = max(bubble_blocks, key=lambda b: max(row[0] for row in b))
 
     # 计算该块的上下边缘和左右边缘
     block_top = min(row[0] for row in best_block)
@@ -311,9 +298,50 @@ def find_green_bubble_and_click():
 
     print(f"气泡边缘: 左={block_left} 右={block_right} 上={block_top} 下={block_bottom}")
 
-    # 计算中间位置
-    click_x = int((block_left + block_right) // 2)
-    click_y = int((block_top + block_bottom) // 2)
+    # 在气泡区域内，从下往上扫描，找白色/浅色文字像素（URL 区域）
+    text_rows = []
+    for y in range(block_bottom, block_top, -2):
+        row_whites = []
+        for x in range(block_left + 10, block_right - 10, 2):
+            r, g, b_val = arr[y, x, 0], arr[y, x, 1], arr[y, x, 2]
+            # 白色/浅色文字：亮度高，饱和度低
+            brightness = (r + g + b_val) / 3
+            saturation = max(r, g, b_val) - min(r, g, b_val)
+            if brightness > 180 and saturation < 60:
+                row_whites.append(x)
+        if row_whites:
+            text_rows.append((y, min(row_whites), max(row_whites)))
+
+    if not text_rows:
+        print("⚠️ 未找到文字区域，退化为点击气泡中心")
+        click_x = int((block_left + block_right) // 2)
+        click_y = int((block_top + block_bottom) // 2)
+        print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
+        return (click_x, click_y)
+
+    # 合并连续的文字行
+    text_blocks = []
+    current_text = [text_rows[0]]
+    for i in range(1, len(text_rows)):
+        if text_rows[i][0] <= text_rows[i-1][0] + 6:
+            current_text.append(text_rows[i])
+        else:
+            text_blocks.append(current_text)
+            current_text = [text_rows[i]]
+    text_blocks.append(current_text)
+
+    # 取最底部的文字块（最新消息的 URL）
+    best_text = max(text_blocks, key=lambda b: max(row[0] for row in b))
+
+    text_top = min(row[0] for row in best_text)
+    text_bottom = max(row[0] for row in best_text)
+    text_left = min(min(row[1] for row in best_text), min(row[2] for row in best_text))
+    text_right = max(max(row[1] for row in best_text), max(row[2] for row in best_text))
+
+    click_x = int((text_left + text_right) // 2)
+    click_y = int((text_top + text_bottom) // 2)
+
+    print(f"文字区域: 左={text_left} 右={text_right} 上={text_top} 下={text_bottom}")
     print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
     return (click_x, click_y)
 
