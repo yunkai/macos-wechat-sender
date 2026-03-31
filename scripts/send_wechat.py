@@ -475,8 +475,12 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     print(f"  窗口: ({win_x},{win_y}) {win_w}x{win_h}")
     print(f"  点击菜单按钮: ({dot_x}, {dot_y})")
 
-    # 点击"..."按钮
-    print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
+    # 先把鼠标移到窗口中央，避免触发右上角系统通知
+    move = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventMouseMoved, (int(win_x + win_w // 2), int(win_y + win_h // 2)), Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
+    time.sleep(0.2)
 
     # 点击"..."按钮
     print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
