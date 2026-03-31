@@ -131,7 +131,11 @@ def search_and_select(target_name):
 
     # Enter 确认搜索并打开聊天
     pyautogui.press('return')
-    time.sleep(0.05)
+    time.sleep(0.1)
+
+    # 当目标联系人比较久没联系，需要按两次回车才能激活输入窗口
+    pyautogui.press('return')
+    time.sleep(0.1)
 
 
 def send_message(msg):
@@ -143,14 +147,14 @@ def send_message(msg):
     """
     # 复制消息到剪贴板
     pyperclip.copy(msg)
-    time.sleep(0.2)
+    time.sleep(0.5)
 
     # Cmd+V 粘贴消息
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('v')
     pyautogui.keyUp('command')
-    time.sleep(0.2)
+    time.sleep(0.5)
 
     # Enter 发送消息
     pyautogui.press('return')
