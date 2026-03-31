@@ -444,7 +444,11 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
     print("  [3/5] 点击右上角菜单按钮...")
 
-    # 确保"微信(窗口)"在最前
+    # 先关闭通知中心
+    subprocess.run(["killall", "NotificationCenter"])
+    time.sleep(0.2)
+
+    # 激活微信
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.3)
 
@@ -464,23 +468,40 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
             break
 
     if win_x is None:
+        # 等待浏览器窗口出现，重试3次
+        for retry in range(3):
+            time.sleep(1)
+            window_list = Quartz.CGWindowListCopyWindowInfo(kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID)
+            for win in window_list:
+                owner = win.get("kCGWindowOwnerName", "")
+                name = win.get("kCGWindowName", "")
+                if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
+                    b = win.get("kCGWindowBounds", {})
+                    win_x, win_y = b.get("X"), b.get("Y")
+                    win_w, win_h = b.get("Width"), b.get("Height")
+                    print(f"  重试找到窗口: ({win_x},{win_y}) {win_w}x{win_h}")
+                    break
+            if win_x:
+                break
+
+    if win_x is None:
         print("  [3/5] ⚠️ 未找到微信浏览器窗口")
         return False
 
     # 用相对比例计算"..."按钮位置
-    # 按钮在窗口右上角: x = 98.3%窗口宽度, y = 窗口顶部+20像素
+    # x = 98.3%窗口宽度, y = 窗口顶部+20像素
     dot_x = int(win_x + win_w * 0.983)
     dot_y = int(win_y + 20)
 
     print(f"  窗口: ({win_x},{win_y}) {win_w}x{win_h}")
     print(f"  点击菜单按钮: ({dot_x}, {dot_y})")
 
-    # 先把鼠标移到窗口中央，避免触发右上角系统通知
+    # 先把鼠标移到窗口中央，等1秒让通知消失
     move = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventMouseMoved, (int(win_x + win_w // 2), int(win_y + win_h // 2)), Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
-    time.sleep(0.2)
+    time.sleep(1)
 
     # 点击"..."按钮
     print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
