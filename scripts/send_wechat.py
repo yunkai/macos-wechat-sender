@@ -19,10 +19,10 @@ import os
 import argparse
 import numpy as np
 from PIL import Image
-import easyocr
 
-# 全局 EasyOCR 阅读器（启动时初始化一次）
-EASYOCR_READER = easyocr.Reader(["ch_sim", "en"], gpu=False)
+# 全局 RapidOCR 阅读器（启动时初始化一次，比 EasyOCR 快很多）
+from rapidocr import RapidOCR
+RAPIDOCR_READER = RapidOCR()
 
 # 禁用 pyautogui 安全保护
 pyautogui.FAILSAFE = False
@@ -30,26 +30,20 @@ pyautogui.FAILSAFE = False
 
 def clean_window():
     """
-    清洁微信窗口状态
-
-    为什么需要清洁窗口？
-    - 微信可能打开多个窗口（主窗口、搜索弹窗、聊天窗口等）
-    - 上一次搜索可能留下搜索框
-    - 上一次操作可能选中了某个聊天
+    清洁微信窗口状态（优化版：减少迭代次数和等待时间）
 
     清洁步骤：
     1. 打开微信窗口
-    2. 先发送 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 直接关闭）
-    3. 使用 System Events 发送 Cmd+W 关闭所有子窗口
-    4. 重复直到窗口全部关闭
+    2. 最多循环3次：Escape 关闭浮窗 + Cmd+W 关闭窗口
+    3. 检查是否还有子窗口，没有则提前退出
     """
     # 打开微信
     subprocess.run(["open", "-a", "WeChat"])
-    time.sleep(0.5)
+    time.sleep(0.3)
 
-    # 使用 AppleScript + System Events 精确关闭所有窗口
-    for i in range(10):
-        # 先按 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 关闭）
+    # 最多3次迭代，通常1-2次就能关闭所有窗口
+    for i in range(3):
+        # 先按 Escape 关闭浮窗
         escape_script = '''
         tell application "System Events"
             tell process "WeChat"
@@ -59,8 +53,9 @@ def clean_window():
         end tell
         '''
         subprocess.run(['osascript', '-e', escape_script])
-        time.sleep(0.3)  # 多等一会，让浮窗有时间关闭
+        time.sleep(0.1)
 
+        # Cmd+W 关闭窗口
         script = '''
         tell application "System Events"
             tell process "WeChat"
@@ -88,7 +83,7 @@ def clean_window():
         except:
             pass
 
-    # 再次打开微信，确保主窗口正常
+    # 确保主窗口正常
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.1)
 
@@ -202,12 +197,12 @@ def send_file(file_path):
 
 def find_url_text_and_click():
     """
-    通过 EasyOCR 识别截图中的 URL 文字区域，找到最新消息的 URL 中心点作为点击坐标。
+    通过 RapidOCR 识别截图中的 URL 文字区域，找到最新消息的 URL 中心点作为点击坐标。
 
     工作流程：
     1. 用 open -a WeChat 激活微信到前台
     2. 截取全屏截图
-    3. 用 EasyOCR 识别所有包含 "weixin" 或 "http" 的文字
+    3. 用 RapidOCR 识别所有包含 "weixin" 或 "http" 的文字
     4. 取 y 坐标最大的（最底部 = 最新消息）的 URL 区域中心作为点击坐标
 
     Returns:
@@ -264,27 +259,32 @@ def find_url_text_and_click():
     scan_y_bottom = int(wy + wh - 30)   # 从底部开始
     scan_y_top = int(wy + 50)             # 到顶部为止
 
-    # 使用 EasyOCR 识别截图中的 URL 文字区域
-    ocr_results = EASYOCR_READER.readtext("/tmp/wechat_bubble.png", detail=1)
+    # 使用 RapidOCR 识别截图中的 URL 文字区域
+    ocr_result = RAPIDOCR_READER("/tmp/wechat_bubble.png")
 
     url_results = []
-    for (bbox, text, prob) in ocr_results:
-        if 'weixin' in text.lower() or 'mp.weixin' in text.lower() or 'http' in text.lower():
-            xs = [p[0] for p in bbox]
-            ys = [p[1] for p in bbox]
-            cx = int((min(xs) + max(xs)) // 2)
-            cy = int((min(ys) + max(ys)) // 2)
-            url_results.append((cx, cy, text, prob))
+    if ocr_result:
+        txts = ocr_result.txts
+        boxes = ocr_result.boxes
+        scores = ocr_result.scores
+        for i, text in enumerate(txts):
+            if 'weixin' in text.lower() or 'mp.weixin' in text.lower() or 'http' in text.lower():
+                bbox = boxes[i]
+                prob = scores[i]
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                cx = int((min(xs) + max(xs)) // 2)
+                cy = int((min(ys) + max(ys)) // 2)
+                url_results.append((cx, cy, text, prob))
 
     if not url_results:
-        print("⚠️ EasyOCR 未找到 URL，退化为绿色气泡检测")
-        # 回退到原来的绿色气泡检测逻辑（省略，此处略）
+        print("⚠️ RapidOCR 未找到 URL")
         return None
 
     # 取最底部的 URL（y 最大 = 最新消息）
     best = max(url_results, key=lambda x: x[1])
     click_x, click_y, text, prob = best
-    print(f"EasyOCR URL: {text!r} 置信度: {prob:.2f}")
+    print(f"RapidOCR URL: {text!r} 置信度: {prob:.2f}")
     print(f"计算点击位置(屏幕): ({click_x}, {click_y})")
     return (click_x, click_y)
 
@@ -362,6 +362,56 @@ def send_link(url):
     time.sleep(0.05)
     pyautogui.press('return')
     time.sleep(1) #对话框加载完
+
+
+def wait_for_browser_window(timeout=20, interval=1.0):
+    """
+    等待微信内置浏览器窗口出现
+
+    通过检测窗口尺寸变化来判断文章页面是否加载完成。
+    微信内置浏览器窗口比普通聊天窗口更大（通常是全屏或接近全屏）。
+
+    Args:
+        timeout: 最大等待秒数
+        interval: 轮询间隔秒数
+    Returns:
+        tuple: (win_x, win_y, win_w, win_h) 窗口坐标，失败返回 None
+    """
+    kExcludeDesktopElements = 2
+    kOnScreenOnly = 1
+
+    start = time.time()
+    last_state = None
+    stable_count = 0  # 连续几次窗口状态相同说明已稳定
+
+    while time.time() - start < timeout:
+        window_list = Quartz.CGWindowListCopyWindowInfo(
+            kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
+        )
+
+        for win in window_list:
+            owner = win.get("kCGWindowOwnerName", "")
+            name = win.get("kCGWindowName", "")
+            if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
+                b = win.get("kCGWindowBounds", {})
+                x, y = b.get("X", 0), b.get("Y", 0)
+                w, h = b.get("Width", 0), b.get("Height", 0)
+                if w > 100 and h > 100:
+                    state = (x, y, w, h)
+                    if state == last_state:
+                        stable_count += 1
+                        if stable_count >= 2:  # 连续2次状态相同，认为已稳定
+                            print(f"  [wait] 窗口稳定: ({x},{y}) {w}x{h}，耗时 {time.time()-start:.1f}s")
+                            return (x, y, w, h)
+                    else:
+                        stable_count = 0
+                    last_state = state
+                    break
+
+        time.sleep(interval)
+
+    print(f"  [wait] 等待浏览器窗口超时（{timeout}s）")
+    return None
 
 
 def find_and_click_element(label_pattern, regex=False):
@@ -444,55 +494,41 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         time.sleep(0.05)
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
         time.sleep(0.1)
-    print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
-    time.sleep(1)
+    print("  [2/5] ✅ 已点击链接，动态等待文章页面加载...")
 
     # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
     print("  [3/5] 点击右上角菜单按钮...")
 
     # 先关闭通知中心
     subprocess.run(["killall", "NotificationCenter"])
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 激活微信
     subprocess.run(["open", "-a", "WeChat"])
-    time.sleep(0.3)
+    time.sleep(0.2)
 
-    # 获取"微信(窗口)"的边界
-    kExcludeDesktopElements = 2
-    kOnScreenOnly = 1
-    window_list = Quartz.CGWindowListCopyWindowInfo(kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID)
+    # 动态等待浏览器窗口出现（窗口稳定即说明文章加载完成）
+    browser_win = wait_for_browser_window(timeout=20, interval=0.8)
 
     win_x, win_y, win_w, win_h = None, None, None, None
-    for win in window_list:
-        owner = win.get("kCGWindowOwnerName", "")
-        name = win.get("kCGWindowName", "")
-        if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
-            b = win.get("kCGWindowBounds", {})
-            win_x, win_y = b.get("X"), b.get("Y")
-            win_w, win_h = b.get("Width"), b.get("Height")
-            break
-
-    if win_x is None:
-        # 等待浏览器窗口出现，重试3次
-        for retry in range(3):
-            time.sleep(1)
-            window_list = Quartz.CGWindowListCopyWindowInfo(kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID)
-            for win in window_list:
-                owner = win.get("kCGWindowOwnerName", "")
-                name = win.get("kCGWindowName", "")
-                if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
-                    b = win.get("kCGWindowBounds", {})
-                    win_x, win_y = b.get("X"), b.get("Y")
-                    win_w, win_h = b.get("Width"), b.get("Height")
-                    print(f"  重试找到窗口: ({win_x},{win_y}) {win_w}x{win_h}")
-                    break
-            if win_x:
+    if browser_win:
+        win_x, win_y, win_w, win_h = browser_win
+    else:
+        # fallback：尝试传统检测
+        kExcludeDesktopElements = 2
+        kOnScreenOnly = 1
+        window_list = Quartz.CGWindowListCopyWindowInfo(kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID)
+        for win in window_list:
+            owner = win.get("kCGWindowOwnerName", "")
+            name = win.get("kCGWindowName", "")
+            if ("WeChat" in owner or "微信" in owner) and "窗口" in name:
+                b = win.get("kCGWindowBounds", {})
+                win_x, win_y = b.get("X"), b.get("Y")
+                win_w, win_h = b.get("Width"), b.get("Height")
                 break
-
-    if win_x is None:
-        print("  [3/5] ⚠️ 未找到微信浏览器窗口")
-        return False
+        if win_x is None:
+            print("  [3/5] ⚠️ 未找到微信浏览器窗口")
+            return False
 
     # 用相对比例计算"..."按钮位置
     # x = 98.3%窗口宽度, y = 窗口顶部+20像素
@@ -502,12 +538,12 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     print(f"  窗口: ({win_x},{win_y}) {win_w}x{win_h}")
     print(f"  点击菜单按钮: ({dot_x}, {dot_y})")
 
-    # 先把鼠标移到窗口中央，等1秒让通知消失
+    # 先把鼠标移到窗口中央，等通知消失
     move = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventMouseMoved, (int(win_x + win_w // 2), int(win_y + win_h // 2)), Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
-    time.sleep(1)
+    time.sleep(0.3)
 
     # 点击"..."按钮
     print(f"  点击菜单按钮 ({dot_x}, {dot_y})...")
@@ -520,68 +556,71 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
     time.sleep(0.05)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
-    time.sleep(0.8)  # 等待菜单出现
+    time.sleep(0.4)  # 等待菜单出现
 
     # 按向下键选中"转发给朋友"，按回车确认
     print("  选择「转发给朋友」...")
     pyautogui.press('down')
-    time.sleep(0.3)
+    time.sleep(0.15)
     pyautogui.press('return')
-    time.sleep(1)
+    time.sleep(0.5)
     print("  [3/5] ✅ 已打开转发浮窗")
 
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
-    time.sleep(0.8)
+    time.sleep(0.3)
 
     pyperclip.copy(target_contact)
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # Cmd+F 打开搜索框
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('f')
     pyautogui.keyUp('command')
-    time.sleep(0.1)
+    time.sleep(0.05)
 
     # 粘贴联系人名称
     pyautogui.keyDown('command')
     time.sleep(0.05)
     pyautogui.press('v')
     pyautogui.keyUp('command')
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 键盘向下键选中第一个结果
     pyautogui.press('down')
-    time.sleep(0.1)
+    time.sleep(0.05)
     # 回车确认选中
     pyautogui.press('return')
-    time.sleep(0.3)
+    time.sleep(0.15)
     print("  [4/5] ✅ 已选中介联系人")
 
-    # Step 5: 点击发送按钮（使用 EasyOCR 定位"发送"文字）
+    # Step 5: 点击发送按钮（使用 RapidOCR 定位"发送"文字）
     print("  [5/5] 点击发送按钮...")
-    time.sleep(0.5)
+    time.sleep(0.3)
 
     # 截图
     subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/send_button.png"])
 
-    # 用 EasyOCR 找"发送"按钮
-    ocr_results = EASYOCR_READER.readtext("/tmp/send_button.png", detail=1)
+    # 用 RapidOCR 找"发送"按钮
+    send_ocr = RAPIDOCR_READER("/tmp/send_button.png")
 
     send_clicked = False
-    for (bbox, text, prob) in ocr_results:
-        # 精确匹配"发送"按钮（排除"发送给"窗口标题）
-        if text.strip() == "发送":
-            xs = [p[0] for p in bbox]
-            ys = [p[1] for p in bbox]
-            cx = int((min(xs) + max(xs)) // 2)
-            cy = int((min(ys) + max(ys)) // 2)
-            print(f"  找到发送按钮: ({cx}, {cy})")
-            pyautogui.click(cx, cy)
-            send_clicked = True
-            print("  [5/5] ✅ 已点击发送按钮")
-            break
+    if send_ocr:
+        for i, text in enumerate(send_ocr.txts):
+            bbox = send_ocr.boxes[i]
+            prob = send_ocr.scores[i]
+            # 精确匹配"发送"按钮（排除"发送给"窗口标题）
+            if text.strip() == "发送":
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                cx = int((min(xs) + max(xs)) // 2)
+                cy = int((min(ys) + max(ys)) // 2)
+                print(f"  找到发送按钮: ({cx}, {cy})")
+                pyautogui.click(cx, cy)
+                send_clicked = True
+                print("  [5/5] ✅ 已点击发送按钮")
+                break
 
     if not send_clicked:
         print("  [5/5] ⚠️ 未自动找到发送按钮，请手动点击")
