@@ -192,7 +192,7 @@ def send_file(file_path):
     return True
 
 
-def find_green_bubble_and_click():
+def find_url_text_and_click():
     """
     通过 EasyOCR 识别截图中的 URL 文字区域，找到最新消息的 URL 中心点作为点击坐标。
 
@@ -317,7 +317,7 @@ def open_link_in_browser(via_contact="文件传输助手"):
     search_and_select(via_contact)
 
     # 自动找气泡并点击
-    pos = find_green_bubble_and_click()
+    pos = find_url_text_and_click()
     if pos is None:
         print("⚠️ 未找到链接气泡，请手动点击")
         return False
@@ -423,7 +423,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
 
     # Step 2: 自动找气泡并双击打开链接
     print("  [2/5] 自动定位链接位置...")
-    pos = find_green_bubble_and_click()
+    pos = find_url_text_and_click()
     if pos is None:
         print("  [2/5] ⚠️ 未找到链接，请手动点击")
         return False
