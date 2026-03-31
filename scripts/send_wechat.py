@@ -277,7 +277,7 @@ def find_green_bubble_and_click():
         return None
 
     # 合并连续的行，形成气泡块
-    # 找出最大的连续绿色块（最新消息在最底部）
+    # 找出连续的绿色块（最新消息在最底部）
     bubble_blocks = []
     current_block = [bubble_rows[0]]
     for i in range(1, len(bubble_rows)):
@@ -288,8 +288,20 @@ def find_green_bubble_and_click():
             current_block = [bubble_rows[i]]
     bubble_blocks.append(current_block)
 
+    # 过滤：单个气泡高度不超过 200px，否则是多个气泡合并了
+    valid_blocks = []
+    for block in bubble_blocks:
+        block_top = min(row[0] for row in block)
+        block_bottom = max(row[0] for row in block)
+        if block_bottom - block_top <= 200:
+            valid_blocks.append(block)
+
+    if not valid_blocks:
+        print("未找到有效气泡块")
+        return None
+
     # 选最底部的块（y 值最大 = 最新消息）
-    best_block = max(bubble_blocks, key=lambda b: max(row[0] for row in b))
+    best_block = max(valid_blocks, key=lambda b: max(row[0] for row in b))
 
     # 计算该块的上下边缘和左右边缘
     block_top = min(row[0] for row in best_block)
