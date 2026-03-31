@@ -192,13 +192,13 @@ wechat-send-message/
 ### 命令行使用
 
 ```bash
-python3 send_wechat.py <目标联系人> --forward-article "https://mp.weixin.qq.com/s/xxx"
+python3 send_wechat.py <目标联系人> --url "https://mp.weixin.qq.com/s/xxx"
 
 # 示例：将文章转发给"老王"
-python3 send_wechat.py 老王 --forward-article "https://mp.weixin.qq.com/s/abc123"
+python3 send_wechat.py 老王 --url "https://mp.weixin.qq.com/s/abc123"
 
 # 通过其他联系人作为跳板（默认是文件传输助手）
-python3 send_wechat.py 老王 --forward-article "https://mp.weixin.qq.com/s/abc123" --via 文件传输助手
+python3 send_wechat.py 老王 --url "https://mp.weixin.qq.com/s/abc123" --via 文件传输助手
 ```
 
 ### 作为模块导入
@@ -214,7 +214,7 @@ forward_article_via_browser(
 ```
 
 ⚠️ **注意事项**
-- `--forward-article` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
+- `--url` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
 - 跳板联系人默认是"文件传输助手"，可通过 `--via` 参数修改
 - 步骤2（点击链接）完全自动化：程序通过 EasyOCR 识别聊天中的 URL 文字区域，单击打开文章
 - 此功能依赖 CGEvent（Quartz）、CGWindowListCopyWindowInfo 和 EasyOCR

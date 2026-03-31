@@ -77,7 +77,7 @@ send_message("消息内容")
 使用 `--forward-article` 参数，可将公众号文章以**卡片形式**转发给指定联系人：
 
 ```bash
-python3 scripts/send_wechat.py 阅品阁休息茶室 --forward-article "https://mp.weixin.qq.com/s/xxx"
+python3 scripts/send_wechat.py 阅品阁休息茶室 --url "https://mp.weixin.qq.com/s/xxx"
 ```
 
 ## 关键技术点

@@ -605,7 +605,7 @@ def main():
     parser.add_argument('contact', nargs='?', help='联系人名称')
     parser.add_argument('message', nargs='?', default=None, help='要发送的消息内容')
     parser.add_argument('-f', '--file', dest='file_path', help='要发送的文件路径')
-    parser.add_argument('--forward-article', dest='article_url', help='要转发的公众号文章URL')
+    parser.add_argument('--url', dest='article_url', help='要转发的公众号文章URL')
     parser.add_argument('--via', dest='via_contact', default='文件传输助手',
                         help='作为跳板的中间联系人（默认文件传输助手）')
 
