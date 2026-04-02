@@ -657,6 +657,264 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     return True
 
 
+def find_card_center():
+    """
+    通过 OCR 识别文章标题文字，找到聊天窗口中最新的卡片式链接中心坐标
+
+    原理：微信卡片有白色背景，通过 OCR 定位标题文字位置，
+          结合位置（右侧=我的卡片）和 Y 坐标（越大越新）来筛选
+
+    Returns:
+        tuple: (x, y) 卡片中心屏幕坐标，失败返回 None
+    """
+    import cv2
+    import numpy as np
+
+    # 等待界面渲染稳定
+    time.sleep(1.0)
+
+    # 截图
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/card_detect.png"], capture_output=True)
+
+    # 再等待一下让截图保存完成
+    time.sleep(0.5)
+
+    # 读取截图
+    img = cv2.imread("/tmp/card_detect.png")
+    if img is None:
+        print("  [卡片检测] 无法读取截图")
+        return None
+
+    h, w = img.shape[:2]
+
+    # 获取微信窗口坐标
+    kExcludeDesktopElements = 2
+    kOnScreenOnly = 1
+    window_list = Quartz.CGWindowListCopyWindowInfo(
+        kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
+    )
+
+    wechat_win = None
+    for win in window_list:
+        owner = win.get("kCGWindowOwnerName", "")
+        if "WeChat" in owner or "微信" in owner:
+            b = win.get("kCGWindowBounds", {})
+            x, y = b.get("X", 0), b.get("Y", 0)
+            ww, wh = b.get("Width", 0), b.get("Height", 0)
+            if ww > 100 and wh > 100 and ww < 1400:
+                wechat_win = (x, y, ww, wh)
+                break
+
+    if not wechat_win:
+        print("  [卡片检测] 未找到微信窗口")
+        return None
+
+    wx, wy, ww, wh = wechat_win
+
+    # 使用 RapidOCR 找文章标题
+    reader = RapidOCR()
+    result = reader("/tmp/card_detect.png")
+
+    if not result or not result.txts:
+        print("  [卡片检测] OCR 未找到文字")
+        return None
+
+    boxes = result.boxes
+    txts = result.txts
+
+    # 找所有包含《的文章标题
+    article_candidates = []
+    for i, text in enumerate(txts):
+        if '《' in text or '链接' in text:
+            bbox = boxes[i]
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            x1, y1 = int(min(xs)), int(min(ys))
+            x2, y2 = int(max(xs)), int(max(ys))
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+
+            # 检查文字周围的背景颜色（扩展区域）
+            expand = 30
+            x1_e = max(0, x1 - expand)
+            y1_e = max(0, y1 - expand)
+            x2_e = min(w, x2 + expand)
+            y2_e = min(h, y2 + expand)
+            roi = img[y1_e:y2_e, x1_e:x2_e]
+
+            # 计算背景平均颜色
+            avg_color = np.mean(roi, axis=(0, 1))  # BGR
+
+            # 白色背景: 所有通道都很高 (R,G,B > 220)
+            # 彩色气泡: 至少有一个通道偏低或明显偏向某种颜色
+            is_white_bg = all(c > 220 for c in avg_color)
+
+            # 过滤：只保留白色背景的（卡片）
+            # 文字消息的气泡是绿色/灰色，不满足白色背景条件
+            if is_white_bg:
+                article_candidates.append((cx, cy, x1, y1, x2, y2, text, avg_color))
+
+    if not article_candidates:
+        print("  [卡片检测] 未找到白色背景的文章标题（卡片）")
+        return None
+
+    # 过滤：只保留右侧区域（聊天窗口的右侧 = 我的卡片）
+    # 微信聊天窗口中，我的卡片在右侧，对方消息在左侧
+    chat_mid_x = int(wx + ww * 0.5)  # 聊天区域的中间线
+
+    right_candidates = [c for c in article_candidates if c[0] > chat_mid_x]
+
+    # 如果右侧没有，fallback 到所有候选
+    candidates_to_use = right_candidates if right_candidates else article_candidates
+
+    # 按 Y 坐标排序（Y 越大越靠下 = 越新的消息）
+    candidates_to_use.sort(key=lambda c: c[1], reverse=True)
+
+    best = candidates_to_use[0]
+    cx, cy = best[0], best[1]
+
+    # 卡片中心在标题下方约50像素（分割线位置）
+    card_cy = cy + 50
+
+    print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选（白色背景），选中底部: ({cx}, {card_cy})")
+    return (cx, card_cy)
+
+
+def wait_for_confirm(step_msg):
+    """等待用户确认，如果是非交互式则跳过"""
+    if sys.stdin.isatty():
+        input(f"\n[按回车继续] {step_msg}")
+    else:
+        print(f"\n[跳过确认] {step_msg} (非交互模式)")
+
+
+def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手"):
+    """
+    转发公众号文章卡片并引用该卡片发送文本消息
+
+    流程：
+    1. 向目标联系人转发文章卡片（复用 forward_article_via_browser）
+    2. 在目标聊天窗口找到刚发送的卡片
+    3. 右键点击卡片，选择"引用"
+    4. 在引用输入框中粘贴消息并发送
+
+    Args:
+        article_url: 公众号文章的 URL
+        target_contact: 要转发给谁（联系人名称）
+        quote_message: 要引用的文本消息内容
+        via_contact: 作为跳板的中间联系人（默认"文件传输助手"）
+    Returns:
+        bool: 是否成功
+    """
+    print(f"📤 开始执行：转发文章 + 引用消息 -> {target_contact}")
+
+    # Step 1: 转发文章卡片给目标联系人
+    print("\n[步骤 1/4] 转发文章卡片...")
+    success = forward_article_via_browser(article_url, target_contact, via_contact)
+    if not success:
+        print("❌ 文章转发失败，退出")
+        return False
+    print("✅ 文章转发成功\n")
+
+    # 等待卡片消息稳定显示
+    time.sleep(1.5)
+
+    wait_for_confirm("步骤1：转发文章卡片 (转发完成后请确认)")
+    # Step 2: 打开目标联系人聊天窗口
+    print("[步骤 2/4] 打开目标聊天窗口...")
+    clean_window()
+    search_and_select(target_contact)
+    time.sleep(0.5)
+    print("  ✅ 已打开目标聊天窗口\n")
+    wait_for_confirm("步骤2：目标聊天窗口已打开，即将定位卡片...")
+
+    # Step 3: 在目标聊天窗口中查找卡片
+    print("[步骤 3/4] 在目标窗口中定位卡片...")
+
+    # 等待卡片渲染完成
+    time.sleep(2.0)
+
+    # 检测卡片位置
+    card_pos = find_card_center()
+    if card_pos is None:
+        print("  ⚠️ 未找到卡片，退出")
+        return False
+    print(f"  ✅ 找到卡片位置: {card_pos}\n")
+    
+    # 移动鼠标到卡片位置，让用户确认
+    move = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventMouseMoved, card_pos, Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
+    
+    # 打印通知
+    print(f"\n\n{'='*50}")
+    print(f"🎯 卡片已定位在: {card_pos}")
+    print(f"请查看屏幕，鼠标是否在卡片上？")
+    print(f"{'='*50}\n")
+    wait_for_confirm(f"卡片位置: {card_pos}，请确认鼠标是否在卡片上...")
+
+    # 先把鼠标移到卡片位置，让用户确认
+    move = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventMouseMoved, card_pos, Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
+    time.sleep(0.5)
+    wait_for_confirm(f"鼠标已移到卡片位置 {card_pos}，请确认鼠标是否在卡片上...")
+
+    # Step 4: 右键点击卡片
+    print("[步骤 4/4] 右键点击卡片...")
+
+    # 右键按下
+    e_down = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventRightMouseDown, card_pos, Quartz.kCGMouseButtonRight
+    )
+    e_up = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventRightMouseUp, card_pos, Quartz.kCGMouseButtonRight
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+    time.sleep(0.05)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+    time.sleep(0.5)  # 等待右键菜单出现
+    print("  ✅ 右键菜单已打开\n")
+    wait_for_confirm("步骤4：右键菜单已打开，即将选择「引用」...")
+    print("[步骤 4/4] 选择\"引用\"并发送消息...")
+
+    # 等待菜单完全出现
+    time.sleep(0.3)
+
+    # 用键盘导航：引用在多选下方，按6次下箭头再回车
+    # 菜单顺序：打开方式(1) 转发(2) 收藏(3) 提醒(4) 多选(5) 引用(6)
+    for _ in range(6):
+        pyautogui.press('down')
+        time.sleep(0.05)
+    time.sleep(0.1)
+    pyautogui.press('return')
+    time.sleep(0.5)  # 等待引用输入框出现
+    print("  ✅ 已进入引用输入模式")
+    print("\n\n" + "="*50)
+    print("🎯 已进入引用输入模式，请确认是否可以输入文字")
+    print("="*50 + "\n")
+    wait_for_confirm("已进入引用输入模式，请确认后继续...")
+
+    # 粘贴引用消息
+    pyperclip.copy(quote_message)
+    time.sleep(0.2)
+
+    pyautogui.keyDown('command')
+    time.sleep(0.05)
+    pyautogui.press('v')
+    pyautogui.keyUp('command')
+    time.sleep(0.2)
+
+    # 发送消息
+    pyautogui.press('return')
+    time.sleep(0.3)
+
+    print(f"✅ 引用消息已发送: \"{quote_message[:30]}...\" -> {target_contact}")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='微信消息自动发送工具',
@@ -676,12 +934,20 @@ def main():
     parser.add_argument('message', nargs='?', default=None, help='要发送的消息内容')
     parser.add_argument('-f', '--file', dest='file_path', help='要发送的文件路径')
     parser.add_argument('-l', '--url', dest='article_url', help='要转发的公众号文章URL')
+    parser.add_argument('-q', '--quote', dest='quote_message', help='转发后引用的文本消息（需要配合 -l 使用）')
     parser.add_argument('--via', dest='via_contact', default='文件传输助手',
                         help='作为跳板的中间联系人（默认文件传输助手）')
 
     args = parser.parse_args()
 
-    # 转发文章模式
+    # 转发文章 + 引用消息模式
+    if args.article_url and args.quote_message:
+        if not args.contact:
+            parser.error('转发+引用模式需要指定目标联系人')
+        forward_article_with_quote(args.article_url, args.contact, args.quote_message, args.via_contact)
+        return
+
+    # 转发文章模式（纯转发，不引用）
     if args.article_url:
         if not args.contact:
             parser.error('转发模式需要指定目标联系人')
