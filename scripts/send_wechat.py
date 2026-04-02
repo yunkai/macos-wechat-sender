@@ -671,57 +671,49 @@ def find_card_center():
     import cv2
     import numpy as np
 
-    # 等待界面渲染稳定
-    time.sleep(1.0)
-
-    # 截图
-    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/card_detect.png"], capture_output=True)
-
-    # 再等待一下让截图保存完成
-    time.sleep(0.5)
-
-    # 读取截图
-    img = cv2.imread("/tmp/card_detect.png")
-    if img is None:
-        print("  [卡片检测] 无法读取截图")
-        return None
-
-    h, w = img.shape[:2]
-
-    # 获取微信窗口坐标（更精确地找聊天窗口）
+    # 获取微信窗口坐标
     kExcludeDesktopElements = 2
     kOnScreenOnly = 1
     window_list = Quartz.CGWindowListCopyWindowInfo(
         kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
     )
 
-    # 找微信窗口，取中等大小的窗口（不是最大的也不是最小的）
-    wechat_wins = []
+    # 找微信窗口
+    wechat_win = None
     for win in window_list:
         owner = win.get("kCGWindowOwnerName", "")
         if "WeChat" in owner or "微信" in owner:
             b = win.get("kCGWindowBounds", {})
             x, y = b.get("X", 0), b.get("Y", 0)
             ww, wh = b.get("Width", 0), b.get("Height", 0)
-            # 过滤：宽度在 300-900，高度在 200-800 的窗口
-            if 300 < ww < 900 and 200 < wh < 800:
-                wechat_wins.append((x, y, ww, wh))
+            if ww > 100 and wh > 100 and ww < 1500 and wh < 1000:
+                wechat_win = (x, y, ww, wh)
+                break
 
-    if not wechat_wins:
+    if not wechat_win:
         print("  [卡片检测] 未找到微信窗口")
         return None
 
-    # 按宽度排序，取中等大小的
-    wechat_wins.sort(key=lambda w: w[2])  # 按宽度从小到大
-    # 取中间位置的窗口（排除最大和最小）
-    if len(wechat_wins) >= 3:
-        wx, wy, ww, wh = wechat_wins[len(wechat_wins)//2]
-    else:
-        wx, wy, ww, wh = wechat_wins[len(wechat_wins)//2] if wechat_wins else (0, 0, 0, 0)
-    print(f"  [卡片检测] 使用窗口: ({wx},{wy}) {ww}x{wh}")
+    wx, wy, ww, wh = wechat_win
+    print(f"  [卡片检测] 窗口: ({wx},{wy}) {ww}x{wh}")
+
+    # 只截取窗口区域
+    subprocess.run(
+        f"screencapture -x -R{wx},{wy},{ww},{wh} /tmp/wechat_window.png",
+        shell=True, capture_output=True
+    )
+    time.sleep(0.2)
+
+    # 读取截图
+    img = cv2.imread("/tmp/wechat_window.png")
+    if img is None:
+        print("  [卡片检测] 无法读取截图")
+        return None
+
+    h, w = img.shape[:2]
 
     # 使用 RapidOCR 找文章标题
-    result = RAPIDOCR_READER("/tmp/card_detect.png")
+    result = RAPIDOCR_READER("/tmp/wechat_window.png")
 
     if not result or not result.txts:
         print("  [卡片检测] OCR 未找到文字")
