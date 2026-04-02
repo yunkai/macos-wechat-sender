@@ -18,6 +18,7 @@ import sys
 import os
 import argparse
 import numpy as np
+import cv2
 from PIL import Image
 
 # 全局 RapidOCR 阅读器（启动时初始化一次，比 EasyOCR 快很多）
@@ -722,37 +723,46 @@ def find_card_center():
     boxes = result.boxes
     txts = result.txts
 
-    # 找所有包含《的文章标题
+    # 找所有包含《的文章标题 或 带有「链接」标签的文章
+    # 华严经标题如"大方广佛华严经卷第六十八"没有《》符号，需要单独处理
     article_candidates = []
     for i, text in enumerate(txts):
-        if '《' in text or '链接' in text:
-            bbox = boxes[i]
-            xs = [p[0] for p in bbox]
-            ys = [p[1] for p in bbox]
-            x1, y1 = int(min(xs)), int(min(ys))
-            x2, y2 = int(max(xs)), int(max(ys))
-            cx = (x1 + x2) // 2
-            cy = (y1 + y2) // 2
+        # 判断是否为文章标题：
+        # 1. 包含《符号（硬光格式）
+        # 2. 包含"链接"标签
+        # 3. 中文标题且长度>=6（华严经格式如"大方广佛华严经卷第六十八"）
+        is_chinese_title = any('\u4e00' <= c <= '\u9fff' for c in text) and len(text) >= 6
+        is_article_title = '《' in text or '链接' in text or is_chinese_title
+        if not is_article_title:
+            continue
 
-            # 检查文字周围的背景颜色（扩展区域）
-            expand = 30
-            x1_e = max(0, x1 - expand)
-            y1_e = max(0, y1 - expand)
-            x2_e = min(w, x2 + expand)
-            y2_e = min(h, y2 + expand)
-            roi = img[y1_e:y2_e, x1_e:x2_e]
+        bbox = boxes[i]
+        xs = [p[0] for p in bbox]
+        ys = [p[1] for p in bbox]
+        x1, y1 = int(min(xs)), int(min(ys))
+        x2, y2 = int(max(xs)), int(max(ys))
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
 
-            # 计算背景平均颜色
-            avg_color = np.mean(roi, axis=(0, 1))  # BGR
+        # 检查文字周围的背景颜色（扩展区域）
+        expand = 30
+        x1_e = max(0, x1 - expand)
+        y1_e = max(0, y1 - expand)
+        x2_e = min(w, x2 + expand)
+        y2_e = min(h, y2 + expand)
+        roi = img[y1_e:y2_e, x1_e:x2_e]
 
-            # 白色背景: 所有通道都很高 (R,G,B > 220)
-            # 彩色气泡: 至少有一个通道偏低或明显偏向某种颜色
-            is_white_bg = all(c > 220 for c in avg_color)
+        # 计算背景平均颜色
+        avg_color = np.mean(roi, axis=(0, 1))  # BGR
 
-            # 过滤：只保留白色背景的（卡片）
-            # 文字消息的气泡是绿色/灰色，不满足白色背景条件
-            if is_white_bg:
-                article_candidates.append((cx, cy, x1, y1, x2, y2, text, avg_color))
+        # 白色背景: 所有通道都很高 (R,G,B > 220)
+        # 彩色气泡: 至少有一个通道偏低或明显偏向某种颜色
+        is_white_bg = all(c > 220 for c in avg_color)
+
+        # 过滤：只保留白色背景的（卡片）
+        # 文字消息的气泡是绿色/灰色，不满足白色背景条件
+        if is_white_bg:
+            article_candidates.append((cx, cy, x1, y1, x2, y2, text, avg_color))
 
     if not article_candidates:
         print("  [卡片检测] 未找到白色背景的文章标题（卡片）")
@@ -773,8 +783,28 @@ def find_card_center():
     best = candidates_to_use[0]
     cx, cy = best[0], best[1]
 
-    # 卡片中心在标题下方约50像素（分割线位置）
-    card_cy = cy + 50
+    # 卡片中心：在标题下方查找灰色分割线的位置
+    # 灰色分割线通常在标题下方30-80像素的位置
+    # 从标题位置向下扫描，找到灰色水平线的位置
+    gray_lower = np.array([150, 150, 150])
+    gray_upper = np.array([210, 210, 210])
+
+    card_cy = cy + 50  # 默认值
+
+    # 在标题下方30-100像素范围内扫描找灰色线
+    for offset in range(30, 100, 5):
+        scan_y = cy + offset
+        if scan_y >= h:
+            break
+        scan_x_start = max(0, cx - 200)
+        scan_x_end = min(w, cx + 200)
+        scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
+        gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
+        gray_pixels = cv2.countNonZero(gray_mask)
+        if gray_pixels > 50:  # 找到灰色线
+            card_cy = scan_y
+            print(f"  [卡片检测] 找到灰色分割线在 y={scan_y}, gray_pixels={gray_pixels}")
+            break
 
     print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选（白色背景），选中底部: ({cx}, {card_cy})")
     return (cx, card_cy)
@@ -865,6 +895,23 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     # Step 4: 右键点击卡片
     print("[步骤 4/4] 右键点击卡片...")
 
+    # 预检查：确认点击位置是白色背景（卡片）
+    print(f"  [预检查] 验证卡片位置 {card_pos}...")
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/card_verify.png"], capture_output=True)
+    img_verify = cv2.imread("/tmp/card_verify.png")
+    if img_verify is not None:
+        px, py = int(card_pos[0]), int(card_pos[1])
+        if 0 <= py < img_verify.shape[0] and 0 <= px < img_verify.shape[1]:
+            pixel = img_verify[py, px]
+            b, g, r = int(pixel[0]), int(pixel[1]), int(pixel[2])
+            is_white = all(c > 220 for c in [r, g, b])
+            print(f"  [预检查] 像素颜色: RGB({r},{g},{b}), 白色={is_white}")
+            if not is_white:
+                print(f"  ⚠️ 位置 {card_pos} 不是白色背景，卡片位置可能不正确")
+                print("  ⚠️ 将继续尝试，但如果右键菜单未出现会自动重试")
+        else:
+            print(f"  ⚠️ 位置 {card_pos} 超出截图范围")
+
     # 右键按下
     e_down = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventRightMouseDown, card_pos, Quartz.kCGMouseButtonRight
@@ -876,7 +923,26 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     time.sleep(0.05)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
     time.sleep(0.5)  # 等待右键菜单出现
-    print("  ✅ 右键菜单已打开\n")
+
+    # 检查右键菜单是否出现（截图检查是否有菜单选项）
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_check.png"], capture_output=True)
+    menu_ocr = RAPIDOCR_READER("/tmp/menu_check.png")
+    menu_visible = False
+    if menu_ocr:
+        for text in menu_ocr.txts:
+            if any(keyword in text for keyword in ['打开方式', '转发', '收藏', '提醒', '多选', '引用']):
+                menu_visible = True
+                print(f"  ✅ 右键菜单已打开（检测到菜单选项）\n")
+                break
+
+    if not menu_visible:
+        print(f"  ❌ 右键菜单未出现，卡片位置可能不正确: {card_pos}")
+        print("  ⚠️ 请手动确认卡片位置，或检查 find_card_center 函数")
+        # 关闭菜单，重新定位
+        pyautogui.press('escape')
+        time.sleep(0.3)
+        return False
+
     wait_for_confirm("步骤4：右键菜单已打开，即将选择「引用」...")
     print("[步骤 4/4] 选择\"引用\"并发送消息...")
 
