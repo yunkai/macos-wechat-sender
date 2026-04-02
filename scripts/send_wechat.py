@@ -841,15 +841,12 @@ def find_card_center():
 
 
 def wait_for_confirm(step_msg, sleep_sec=1.0):
-    """等待用户确认，如果是非交互式则跳过"""
-    if sys.stdin.isatty():
-        time.sleep(sleep_sec)
-        input(f"\n[按回车继续] {step_msg}")
-    else:
-        print(f"\n[跳过确认] {step_msg} (非交互模式)")
+    """等待用户确认"""
+    time.sleep(sleep_sec)
+    input(f"\n[按回车继续] {step_msg}")
 
 
-def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=True):
+def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=False):
     """
     转发公众号文章卡片并引用该卡片发送文本消息
 
