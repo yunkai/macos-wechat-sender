@@ -811,9 +811,10 @@ def find_card_center():
     return (cx, card_cy)
 
 
-def wait_for_confirm(step_msg):
+def wait_for_confirm(step_msg, sleep_sec=1.0):
     """等待用户确认，如果是非交互式则跳过"""
     if sys.stdin.isatty():
+        time.sleep(sleep_sec)
         input(f"\n[按回车继续] {step_msg}")
     else:
         print(f"\n[跳过确认] {step_msg} (非交互模式)")
@@ -838,8 +839,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
         print("❌ 文章转发失败，退出")
         return False
     print("✅ 文章转发成功\n")
-    time.sleep(1.0)
-    wait_for_confirm("步骤1完成，请确认...")
+    wait_for_confirm("步骤1完成，请确认...", sleep_sec=1.0)
 
     # Step 2: 打开目标聊天窗口
     print("[步骤 2/4] 打开目标聊天窗口...")
@@ -847,7 +847,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     search_and_select(target_contact)
     time.sleep(1.0)
     print("  ✅ 已打开目标聊天窗口\n")
-    wait_for_confirm("步骤2完成，请确认...")
+    wait_for_confirm("步骤2完成，请确认...", sleep_sec=1.0)
 
     # Step 3: 定位卡片
     print("[步骤 3/4] 在目标窗口中定位卡片...")
