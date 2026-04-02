@@ -825,79 +825,51 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     转发公众号文章卡片并引用该卡片发送文本消息
 
     流程：
-    1. 向目标联系人转发文章卡片（复用 forward_article_via_browser）
-    2. 在目标聊天窗口找到刚发送的卡片
+    1. 向目标联系人转发文章卡片
+    2. 在目标聊天窗口找到卡片
     3. 右键点击卡片，选择"引用"
-    4. 在引用输入框中粘贴消息并发送
-
-    Args:
-        article_url: 公众号文章的 URL
-        target_contact: 要转发给谁（联系人名称）
-        quote_message: 要引用的文本消息内容
-        via_contact: 作为跳板的中间联系人（默认"文件传输助手"）
-    Returns:
-        bool: 是否成功
+    4. 在引用输入框中发送消息
     """
     print(f"📤 开始执行：转发文章 + 引用消息 -> {target_contact}")
 
-    # Step 1: 转发文章卡片给目标联系人
+    # Step 1: 转发文章卡片
     print("\n[步骤 1/4] 转发文章卡片...")
     success = forward_article_via_browser(article_url, target_contact, via_contact)
     if not success:
         print("❌ 文章转发失败，退出")
         return False
     print("✅ 文章转发成功\n")
+    time.sleep(1.0)
+    wait_for_confirm("步骤1完成，请确认...")
 
-    # 等待卡片消息稳定显示
-    time.sleep(1.5)
-
-    wait_for_confirm("步骤1：转发文章卡片 (转发完成后请确认)")
-    # Step 2: 打开目标联系人聊天窗口
+    # Step 2: 打开目标聊天窗口
     print("[步骤 2/4] 打开目标聊天窗口...")
     clean_window()
     search_and_select(target_contact)
-    time.sleep(0.5)
+    time.sleep(1.0)
     print("  ✅ 已打开目标聊天窗口\n")
-    wait_for_confirm("步骤2：目标聊天窗口已打开，即将定位卡片...")
+    wait_for_confirm("步骤2完成，请确认...")
 
-    # Step 3: 在目标聊天窗口中查找卡片
+    # Step 3: 定位卡片
     print("[步骤 3/4] 在目标窗口中定位卡片...")
-
-    # 等待卡片渲染完成
-    time.sleep(2.0)
-
-    # 检测卡片位置
+    time.sleep(1.5)
     card_pos = find_card_center()
     if card_pos is None:
         print("  ⚠️ 未找到卡片，退出")
         return False
     print(f"  ✅ 找到卡片位置: {card_pos}\n")
-    
-    # 移动鼠标到卡片位置，让用户确认
+
+    # 移动鼠标到卡片位置
     move = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventMouseMoved, card_pos, Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
-    
-    # 打印通知
-    print(f"\n\n{'='*50}")
-    print(f"🎯 卡片已定位在: {card_pos}")
-    print(f"请查看屏幕，鼠标是否在卡片上？")
-    print(f"{'='*50}\n")
-    wait_for_confirm(f"卡片位置: {card_pos}，请确认鼠标是否在卡片上...")
+    wait_for_confirm(f"鼠标已移到卡片 {card_pos}，请确认...")
 
-    # 先把鼠标移到卡片位置，让用户确认
-    move = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventMouseMoved, card_pos, Quartz.kCGMouseButtonLeft
-    )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
-    time.sleep(0.5)
-    wait_for_confirm(f"鼠标已移到卡片位置 {card_pos}，请确认鼠标是否在卡片上...")
-
-    # Step 4: 右键点击卡片
+    # Step 4: 右键点击并选择引用
     print("[步骤 4/4] 右键点击卡片...")
 
-    # 预检查：确认点击位置是白色背景（卡片）
+    # 预检查：验证点击位置是白色背景
     print(f"  [预检查] 验证卡片位置 {card_pos}...")
     subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/card_verify.png"], capture_output=True)
     img_verify = cv2.imread("/tmp/card_verify.png")
@@ -907,14 +879,9 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
             pixel = img_verify[py, px]
             b, g, r = int(pixel[0]), int(pixel[1]), int(pixel[2])
             is_white = all(c > 220 for c in [r, g, b])
-            print(f"  [预检查] 像素颜色: RGB({r},{g},{b}), 白色={is_white}")
-            if not is_white:
-                print(f"  ⚠️ 位置 {card_pos} 不是白色背景，卡片位置可能不正确")
-                print("  ⚠️ 将继续尝试，但如果右键菜单未出现会自动重试")
-        else:
-            print(f"  ⚠️ 位置 {card_pos} 超出截图范围")
+            print(f"  [预检查] RGB({r},{g},{b}), 白色={is_white}")
 
-    # 右键按下
+    # 右键点击
     e_down = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventRightMouseDown, card_pos, Quartz.kCGMouseButtonRight
     )
@@ -924,60 +891,46 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
     time.sleep(0.05)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
-    time.sleep(0.5)  # 等待右键菜单出现
+    time.sleep(0.3)
 
-    # 检查右键菜单是否出现（截图检查是否有菜单选项）
+    # 检查右键菜单是否出现
     subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_check.png"], capture_output=True)
     menu_ocr = RAPIDOCR_READER("/tmp/menu_check.png")
     menu_visible = False
     if menu_ocr:
         for text in menu_ocr.txts:
-            if any(keyword in text for keyword in ['打开方式', '转发', '收藏', '提醒', '多选', '引用']):
+            if any(kw in text for kw in ['打开方式', '转发', '收藏', '提醒', '多选', '引用']):
                 menu_visible = True
-                print(f"  ✅ 右键菜单已打开（检测到菜单选项）\n")
+                print(f"  ✅ 右键菜单已打开\n")
                 break
 
     if not menu_visible:
-        print(f"  ❌ 右键菜单未出现，卡片位置可能不正确: {card_pos}")
-        print("  ⚠️ 请手动确认卡片位置，或检查 find_card_center 函数")
-        # 关闭菜单，重新定位
+        print(f"  ❌ 右键菜单未出现: {card_pos}")
         pyautogui.press('escape')
-        time.sleep(0.3)
+        time.sleep(0.2)
         return False
 
-    wait_for_confirm("步骤4：右键菜单已打开，即将选择「引用」...")
-    print("[步骤 4/4] 选择\"引用\"并发送消息...")
+    wait_for_confirm("步骤4完成，请确认...")
 
-    # 等待菜单完全出现
-    time.sleep(0.3)
-
-    # 用键盘导航：引用在多选下方，按6次下箭头再回车
+    # 选择"引用"
+    print("[步骤 4/4] 选择「引用」...")
     # 菜单顺序：打开方式(1) 转发(2) 收藏(3) 提醒(4) 多选(5) 引用(6)
     for _ in range(6):
         pyautogui.press('down')
-        time.sleep(0.05)
-    time.sleep(0.1)
-    pyautogui.press('return')
-    time.sleep(0.5)  # 等待引用输入框出现
-    print("  ✅ 已进入引用输入模式")
-    print("\n\n" + "="*50)
-    print("🎯 已进入引用输入模式，请确认是否可以输入文字")
-    print("="*50 + "\n")
-    wait_for_confirm("已进入引用输入模式，请确认后继续...")
-
-    # 粘贴引用消息
-    pyperclip.copy(quote_message)
-    time.sleep(0.2)
-
-    pyautogui.keyDown('command')
-    time.sleep(0.05)
-    pyautogui.press('v')
-    pyautogui.keyUp('command')
-    time.sleep(0.2)
-
-    # 发送消息
+        time.sleep(0.03)
     pyautogui.press('return')
     time.sleep(0.3)
+    print("  ✅ 已进入引用输入模式\n")
+
+    # 粘贴并发送引用消息
+    pyperclip.copy(quote_message)
+    time.sleep(0.1)
+    pyautogui.keyDown('command')
+    pyautogui.press('v')
+    pyautogui.keyUp('command')
+    time.sleep(0.1)
+    pyautogui.press('return')
+    time.sleep(0.2)
 
     print(f"✅ 引用消息已发送: \"{quote_message[:30]}...\" -> {target_contact}")
     return True
