@@ -47,7 +47,9 @@ def test_send_file():
     print("=" * 50)
     
     TARGET = "文件传输助手"
-    FILE_PATH = "/tmp/abc.pdf"
+    # 使用项目内的测试文件
+    FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "tests", "test.pdf")
+    FILE_PATH = os.path.abspath(FILE_PATH)
     
     # 检查文件是否存在
     if not os.path.exists(FILE_PATH):
