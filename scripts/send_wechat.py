@@ -741,15 +741,19 @@ def find_card_center():
         avg_color = np.mean(roi, axis=(0, 1))  # BGR
 
         # 白色背景: 所有通道都很高 (R,G,B > 220)
-        is_white_bg = all(c > 220 for c in avg_color)
+        is_white_bg = all(c > 180 for c in avg_color)
+        is_dark_bg = all(c < 100 for c in avg_color)
 
-        if not is_white_bg:
+        if not is_white_bg and not is_dark_bg:
             continue
 
-        # 检查文字下方是否有灰色直线
+        # 检查文字下方是否有分割线
+        # 白天模式：找灰色直线（比白色背景暗）
+        # 夜间模式：找浅色直线（比深色背景亮）
         gray_lower = np.array([150, 150, 150])
         gray_upper = np.array([210, 210, 210])
-        has_gray_line = False
+        has_line = False
+        line_y = None
 
         for offset in range(30, 100, 5):
             scan_y = cy + offset
@@ -758,12 +762,24 @@ def find_card_center():
             scan_x_start = max(0, cx - 200)
             scan_x_end = min(w, cx + 200)
             scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
+            
+            # 检查是否有灰色直线（白天模式）
             gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
             if cv2.countNonZero(gray_mask) > 50:
-                has_gray_line = True
+                has_line = True
+                line_y = scan_y
                 break
+            
+            # 检查是否有浅色直线（夜间模式，比背景亮）
+            if is_dark_bg:
+                bg_brightness = np.mean(scan_region)
+                light_mask = scan_region > (bg_brightness + 30)
+                if np.sum(light_mask) > 50:
+                    has_line = True
+                    line_y = scan_y
+                    break
 
-        if has_gray_line:
+        if has_line:
             article_candidates.append((cx, cy, x1, y1, x2, y2, text))
 
     if not article_candidates:
@@ -782,9 +798,8 @@ def find_card_center():
     cx, cy = best[0], best[1]
     print(f"  [卡片过滤] 选中最下面: ({cx}, {cy})")
 
-    # 卡片中心：在标题下方查找灰色分割线的位置
-    gray_lower = np.array([150, 150, 150])
-    gray_upper = np.array([210, 210, 210])
+    # 卡片中心：在标题下方查找分割线的位置
+    # 白天：找灰色直线；夜间：找浅色直线
     card_cy = cy + 50
 
     for offset in range(30, 100, 5):
@@ -794,10 +809,22 @@ def find_card_center():
         scan_x_start = max(0, cx - 200)
         scan_x_end = min(w, cx + 200)
         scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
+        
+        # 检查是否有灰色直线（白天模式）
+        gray_lower = np.array([150, 150, 150])
+        gray_upper = np.array([210, 210, 210])
         gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
         if cv2.countNonZero(gray_mask) > 50:
             card_cy = scan_y
-            print(f"  [卡片检测] 找到灰色分割线在 y={scan_y}")
+            print(f"  [卡片检测] 找到分割线在 y={scan_y} (灰色)")
+            break
+        
+        # 检查是否有浅色直线（夜间模式，比背景亮）
+        bg_brightness = np.mean(scan_region)
+        light_mask = scan_region > (bg_brightness + 30)
+        if np.sum(light_mask) > 50:
+            card_cy = scan_y
+            print(f"  [卡片检测] 找到分割线在 y={scan_y} (浅色)")
             break
 
     print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选，选中底部: ({cx}, {card_cy})")
