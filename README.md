@@ -80,6 +80,20 @@ send_message("消息内容")
 python3 scripts/send_wechat.py 家人群 -l "https://mp.weixin.qq.com/s/xxx"
 ```
 
+### 转发+引用消息
+
+使用 `-l` 和 `-q` 参数组合，可将文章卡片转发后，引用该卡片发送文本消息：
+
+```bash
+python3 scripts/send_wechat.py 老王 -l "https://mp.weixin.qq.com/s/xxx" -q "这篇文章写得很好，推荐看看"
+```
+
+这会：
+1. 将文章卡片转发给目标联系人
+2. 在目标聊天窗口找到卡片
+3. 右键选择「引用」
+4. 在引用输入框中发送指定文本
+
 ## 关键技术点
 
 | 技术 | 说明 |
@@ -116,6 +130,9 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
+- **v1.7.1** - 新增转发文章+引用消息功能（forward_article_with_quote）
+- **v1.7.0** - 修复 RapidOCR URL 匹配逻辑（http/https 开头精确匹配）
+- **v1.6.0** - 优化卡片检测算法
 - **v1.5.0** - 新增公众号文章卡片转发功能（RapidOCR URL 识别 + 转发浮窗自动化）
 - **v1.2.0** - 初始版本，支持文本消息发送
 

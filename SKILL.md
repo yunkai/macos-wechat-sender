@@ -1,10 +1,10 @@
 ---
 name: wechat-send-message
-description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息、文件和公众号文章卡片转发。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、"转发文章"、或需要通过 Python 代码控制微信发送消息或文件。
-version: 1.5.0
+description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息、文件、公众号文章卡片转发，以及转发后引用消息。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、"转发文章"、"给 XXX 发文章"、"转发文章并引用"、或需要通过 Python 代码控制微信发送消息或文件。
+version: 1.7.1
 ---
 
-# WeChat Send Message v1.5.0
+# WeChat Send Message v1.7.1
 
 在 Mac 上自动化发送微信消息的技能。
 
@@ -171,6 +171,9 @@ wechat-send-message/
 ├── SKILL.md              # 技能说明文档
 └── scripts/
     └── send_wechat.py    # 可执行的发送脚本
+    └── test_send_wechat.py # 回归测试
+└── tests/
+    └── test.pdf          # 测试用PDF文件
 ```
 
 ## 转发公众号文章（卡片形式）
@@ -212,6 +215,48 @@ forward_article_via_browser(
     target_contact="老王"
 )
 ```
+
+### 转发文章+引用消息
+
+使用 `forward_article_with_quote` 函数，可以将文章卡片转发后，引用该卡片发送一条文本消息。
+
+**使用场景**：
+- 转发文章时附带推荐语或说明
+- 需要引用原卡片内容再发表观点
+
+**工作流程**：
+1. 将文章卡片转发给目标联系人
+2. 在目标聊天窗口中找到刚发送的卡片
+3. 右键点击卡片，选择「引用」
+4. 在引用输入框中输入指定文本并发送
+
+**命令行使用**：
+```bash
+python3 send_wechat.py 老王 -l "https://mp.weixin.qq.com/s/xxx" -q "这篇文章写得很好，推荐看看"
+```
+
+**作为模块导入**：
+```python
+from send_wechat import forward_article_with_quote
+
+# 转发文章并引用消息
+forward_article_with_quote(
+    article_url="https://mp.weixin.qq.com/s/abc123",
+    target_contact="老王",
+    quote_message="这篇文章写得很好，推荐看看"
+)
+```
+
+**卡片检测原理**：
+1. 使用 RapidOCR 识别聊天中的文章标题（含「《」符号）
+2. 检查标题周围背景颜色（白色=卡片，彩色气泡=普通文字消息）
+3. 取右侧区域（我的卡片在右侧）+ Y坐标最大（最新消息）
+4. 计算卡片中心位置（标题下方约50像素）
+
+⚠️ **注意事项**
+- `-q` / `--quote` 必须在 `-l` / `--url` 模式下使用
+- 如果未找到卡片，函数会返回 False 并不发送引用消息
+- 引用消息会自动引用对应的卡片内容
 
 ⚠️ **注意事项**
 - `-l` / `--url` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
