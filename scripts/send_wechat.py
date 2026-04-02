@@ -868,18 +868,6 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     # Step 4: 右键点击并选择引用
     print("[步骤 4/4] 右键点击卡片...")
 
-    # 预检查：验证点击位置是白色背景
-    print(f"  [预检查] 验证卡片位置 {card_pos}...")
-    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/card_verify.png"], capture_output=True)
-    img_verify = cv2.imread("/tmp/card_verify.png")
-    if img_verify is not None:
-        px, py = int(card_pos[0]), int(card_pos[1])
-        if 0 <= py < img_verify.shape[0] and 0 <= px < img_verify.shape[1]:
-            pixel = img_verify[py, px]
-            b, g, r = int(pixel[0]), int(pixel[1]), int(pixel[2])
-            is_white = all(c > 220 for c in [r, g, b])
-            print(f"  [预检查] RGB({r},{g},{b}), 白色={is_white}")
-
     # 右键点击
     e_down = Quartz.CGEventCreateMouseEvent(
         None, Quartz.kCGEventRightMouseDown, card_pos, Quartz.kCGMouseButtonRight
