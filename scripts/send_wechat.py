@@ -723,17 +723,10 @@ def find_card_center():
     boxes = result.boxes
     txts = result.txts
 
-    # 找所有包含《的文章标题 或 带有「链接」标签的文章
-    # 华严经标题如"大方广佛华严经卷第六十八"没有《》符号，需要单独处理
+    # 简化检测：找所有白色背景的文字，在其下方检测是否有灰色直线
     article_candidates = []
     for i, text in enumerate(txts):
-        # 判断是否为文章标题：
-        # 1. 包含《符号（硬光格式）
-        # 2. 包含"链接"标签
-        # 3. 中文标题且长度>=6（华严经格式如"大方广佛华严经卷第六十八"）
-        is_chinese_title = any('\u4e00' <= c <= '\u9fff' for c in text) and len(text) >= 6
-        is_article_title = '《' in text or '链接' in text or is_chinese_title
-        if not is_article_title:
+        if not text or len(text.strip()) == 0:
             continue
 
         bbox = boxes[i]
@@ -756,25 +749,39 @@ def find_card_center():
         avg_color = np.mean(roi, axis=(0, 1))  # BGR
 
         # 白色背景: 所有通道都很高 (R,G,B > 220)
-        # 彩色气泡: 至少有一个通道偏低或明显偏向某种颜色
         is_white_bg = all(c > 220 for c in avg_color)
 
-        # 过滤：只保留白色背景的（卡片）
-        # 文字消息的气泡是绿色/灰色，不满足白色背景条件
-        if is_white_bg:
-            article_candidates.append((cx, cy, x1, y1, x2, y2, text, avg_color))
+        if not is_white_bg:
+            continue
+
+        # 检查文字下方是否有灰色直线
+        gray_lower = np.array([150, 150, 150])
+        gray_upper = np.array([210, 210, 210])
+        has_gray_line = False
+
+        for offset in range(30, 100, 5):
+            scan_y = cy + offset
+            if scan_y >= h:
+                break
+            scan_x_start = max(0, cx - 200)
+            scan_x_end = min(w, cx + 200)
+            scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
+            gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
+            if cv2.countNonZero(gray_mask) > 50:
+                has_gray_line = True
+                break
+
+        if has_gray_line:
+            article_candidates.append((cx, cy, x1, y1, x2, y2, text))
 
     if not article_candidates:
-        print("  [卡片检测] 未找到白色背景的文章标题（卡片）")
+        print("  [卡片检测] 未找到卡片（文字+灰色直线）")
         return None
 
     # 过滤：只保留右侧区域（聊天窗口的右侧 = 我的卡片）
-    # 微信聊天窗口中，我的卡片在右侧，对方消息在左侧
-    chat_mid_x = int(wx + ww * 0.5)  # 聊天区域的中间线
+    chat_mid_x = int(wx + ww * 0.5)
 
     right_candidates = [c for c in article_candidates if c[0] > chat_mid_x]
-
-    # 如果右侧没有，fallback 到所有候选
     candidates_to_use = right_candidates if right_candidates else article_candidates
 
     # 按 Y 坐标排序（Y 越大越靠下 = 越新的消息）
@@ -784,14 +791,10 @@ def find_card_center():
     cx, cy = best[0], best[1]
 
     # 卡片中心：在标题下方查找灰色分割线的位置
-    # 灰色分割线通常在标题下方30-80像素的位置
-    # 从标题位置向下扫描，找到灰色水平线的位置
     gray_lower = np.array([150, 150, 150])
     gray_upper = np.array([210, 210, 210])
+    card_cy = cy + 50
 
-    card_cy = cy + 50  # 默认值
-
-    # 在标题下方30-100像素范围内扫描找灰色线
     for offset in range(30, 100, 5):
         scan_y = cy + offset
         if scan_y >= h:
@@ -800,13 +803,12 @@ def find_card_center():
         scan_x_end = min(w, cx + 200)
         scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
         gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
-        gray_pixels = cv2.countNonZero(gray_mask)
-        if gray_pixels > 50:  # 找到灰色线
+        if cv2.countNonZero(gray_mask) > 50:
             card_cy = scan_y
-            print(f"  [卡片检测] 找到灰色分割线在 y={scan_y}, gray_pixels={gray_pixels}")
+            print(f"  [卡片检测] 找到灰色分割线在 y={scan_y}")
             break
 
-    print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选（白色背景），选中底部: ({cx}, {card_cy})")
+    print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选，选中底部: ({cx}, {card_cy})")
     return (cx, card_cy)
 
 
