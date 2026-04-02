@@ -130,9 +130,8 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
-- **v1.7.1** - 新增转发文章+引用消息功能（forward_article_with_quote）
+- **v1.7.1** - 新增转发文章+引用消息功能（forward_article_with_quote），OCR 识别卡片位置
 - **v1.7.0** - 修复 RapidOCR URL 匹配逻辑（http/https 开头精确匹配）
-- **v1.6.0** - 优化卡片检测算法
 - **v1.5.0** - 新增公众号文章卡片转发功能（RapidOCR URL 识别 + 转发浮窗自动化）
 - **v1.2.0** - 初始版本，支持文本消息发送
 
@@ -140,10 +139,13 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ```
 macos-wechat-sender/
-  - README.md          (本文件)
-  - SKILL.md           (OpenClaw 技能说明)
+  - README.md             (本文件)
+  - SKILL.md              (OpenClaw 技能说明)
   - scripts/
-      send_wechat.py  (发送脚本)
+      send_wechat.py     (发送脚本)
+      test_send_wechat.py (回归测试)
+  - tests/
+      test.pdf            (测试用PDF文件)
 ```
 
 ## 在 OpenClaw 等 Agent 中使用

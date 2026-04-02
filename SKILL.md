@@ -33,6 +33,7 @@ version: 1.7.1
 3. **send_message(msg)** - 粘贴消息内容，Enter 发送文本消息
 4. **send_file(file_path)** - osascript 复制文件到剪贴板，Cmd+V 粘贴，Enter 发送文件
 5. **forward_article_via_browser(url, target)** - 发送链接到跳板联系人 → RapidOCR 定位 URL 单击打开文章 → 转发菜单 → 搜索目标联系人 → 发送按钮，文章以卡片形式发出
+6. **forward_article_with_quote(url, target, quote_msg)** - 在 forward_article_via_browser 基础上，额外在目标聊天窗口找到卡片 → 右键选择「引用」→ 在引用输入框中发送指定文本
 
 ## 核心代码模板
 
@@ -167,13 +168,14 @@ pip3 install pyautogui pyperclip rapidocr numpy pillow
 ## 项目结构
 
 ```
-wechat-send-message/
-├── SKILL.md              # 技能说明文档
-└── scripts/
-    └── send_wechat.py    # 可执行的发送脚本
-    └── test_send_wechat.py # 回归测试
+macos-wechat-sender/
+├── SKILL.md                 # 技能说明文档
+├── README.md                # 项目说明文档
+├── scripts/
+│   ├── send_wechat.py       # 可执行的发送脚本
+│   └── test_send_wechat.py  # 回归测试
 └── tests/
-    └── test.pdf          # 测试用PDF文件
+    └── test.pdf             # 测试用PDF文件
 ```
 
 ## 转发公众号文章（卡片形式）
@@ -254,14 +256,11 @@ forward_article_with_quote(
 4. 计算卡片中心位置（标题下方约50像素）
 
 ⚠️ **注意事项**
-- `-q` / `--quote` 必须在 `-l` / `--url` 模式下使用
-- 如果未找到卡片，函数会返回 False 并不发送引用消息
-- 引用消息会自动引用对应的卡片内容
-
-⚠️ **注意事项**
 - `-l` / `--url` 模式下，`联系人` 参数是**转发目标**，不是跳板联系人
 - 跳板联系人默认是"文件传输助手"，可通过 `--via` 参数修改
 - 步骤2（点击链接）完全自动化：程序通过 RapidOCR 识别聊天中的 URL 文字区域，单击打开文章
+- `-q` / `--quote` 必须在 `-l` / `--url` 模式下使用
+- 如果未找到卡片，函数会返回 False 并不发送引用消息
 - 此功能依赖 CGEvent（Quartz）、CGWindowListCopyWindowInfo 和 RapidOCR
 - 首次使用 RapidOCR 会下载模型（约 300MB），后续调用直接复用
 
@@ -275,6 +274,7 @@ python3 send_wechat.py <联系人> <消息>
 python3 send_wechat.py 文件传输助手 你好
 python3 send_wechat.py 小明 -f /path/to/file.pdf
 python3 send_wechat.py 家人群 -l "https://mp.weixin.qq.com/s/xxx"
+python3 send_wechat.py 老王 -l "https://mp.weixin.qq.com/s/xxx" -q "这篇文章写得很好，推荐看看"
 ```
 
 ⚠️ **重要提醒**：使用前请确保「联系人」的名称完全正确，否则可能会发送给错误的对象！
@@ -282,6 +282,7 @@ python3 send_wechat.py 家人群 -l "https://mp.weixin.qq.com/s/xxx"
 ### 作为模块导入
 ```python
 from send_wechat import clean_window, search_and_select, send_message, send_file
+from send_wechat import forward_article_via_browser, forward_article_with_quote
 
 # 发送文本消息
 send_message("你好")
@@ -289,9 +290,18 @@ send_message("你好")
 # 发送文件
 send_file("/path/to/file.pdf")
 
-clean_window()
-search_and_select("联系人名称")
-send_message("消息内容")
+# 转发文章（卡片形式）
+forward_article_via_browser(
+    article_url="https://mp.weixin.qq.com/s/abc123",
+    target_contact="老王"
+)
+
+# 转发文章并引用消息
+forward_article_with_quote(
+    article_url="https://mp.weixin.qq.com/s/abc123",
+    target_contact="老王",
+    quote_message="这篇文章写得很好，推荐看看"
+)
 ```
 
 ## 常见问题
