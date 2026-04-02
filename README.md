@@ -130,7 +130,7 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
-- **v1.7.1** - 新增转发文章+引用消息功能（forward_article_with_quote），OCR 识别卡片位置
+- **v1.12.0** - 卡片检测算法重构：peekaboo frontmost 截图 + 右侧区域过滤 + 选择最下面卡片，窗口大小通用
 - **v1.7.0** - 修复 RapidOCR URL 匹配逻辑（http/https 开头精确匹配）
 - **v1.5.0** - 新增公众号文章卡片转发功能（RapidOCR URL 识别 + 转发浮窗自动化）
 - **v1.2.0** - 初始版本，支持文本消息发送
