@@ -272,7 +272,7 @@ def find_url_text_and_click(target_url=None):
         boxes = ocr_result.boxes
         scores = ocr_result.scores
         for i, text in enumerate(txts):
-            if 'weixin' in text.lower() or 'mp.weixin' in text.lower() or 'http' in text.lower():
+            if text.lower().startswith('http://') or text.lower().startswith('https://'):
                 bbox = boxes[i]
                 prob = scores[i]
                 xs = [p[0] for p in bbox]
