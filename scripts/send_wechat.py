@@ -848,13 +848,11 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     print("[步骤 2/4] 打开目标聊天窗口...")
     clean_window()
     search_and_select(target_contact)
-    time.sleep(1.0)
     print("  ✅ 已打开目标聊天窗口\n")
     wait_for_confirm("步骤2完成，请确认...", sleep_sec=1.0)
 
     # Step 3: 定位卡片
     print("[步骤 3/4] 在目标窗口中定位卡片...")
-    time.sleep(1.5)
     card_pos = find_card_center()
     if card_pos is None:
         print("  ⚠️ 未找到卡片，退出")
