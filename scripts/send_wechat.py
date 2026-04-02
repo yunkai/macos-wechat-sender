@@ -770,17 +770,17 @@ def find_card_center():
         print("  [卡片检测] 未找到卡片（文字+灰色直线）")
         return None
 
-    # 过滤：只保留右侧聊天区域的候选（聊天区域在窗口右侧，约 x > 窗口宽度 * 0.4）
-    chat_start_x = int(w * 0.4)
+    # 过滤：只保留右侧聊天区域的候选（聊天区域在窗口右侧，约 x > 窗口宽度 * 0.6）
+    chat_start_x = int(w * 0.6)
     right_candidates = [c for c in article_candidates if c[0] > chat_start_x]
     candidates_to_use = right_candidates if right_candidates else article_candidates
     print(f"  [卡片过滤] 右侧候选: {len(right_candidates)}/{len(article_candidates)} 个")
     
-    # 按 Y 坐标排序（Y 越大越靠下 = 越新的消息）
+    # 按 Y 坐标排序（Y 越大越靠下 = 最下面的卡片）
     candidates_to_use.sort(key=lambda c: c[1], reverse=True)
     best = candidates_to_use[0]
     cx, cy = best[0], best[1]
-    print(f"  [卡片过滤] 选中最新: ({cx}, {cy})")
+    print(f"  [卡片过滤] 选中最下面: ({cx}, {cy})")
 
     # 卡片中心：在标题下方查找灰色分割线的位置
     gray_lower = np.array([150, 150, 150])
