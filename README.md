@@ -130,6 +130,7 @@ A: 使用 `-f` 选项：`python3 scripts/send_wechat.py 小明 -f /path/to/file.
 
 ## 版本历史
 
+- **v1.13.0** - 卡片检测算法支持白天/夜间模式自动切换
 - **v1.12.0** - 卡片检测算法重构：peekaboo frontmost 截图 + 右侧区域过滤 + 选择最下面卡片，窗口大小通用
 - **v1.7.0** - 修复 RapidOCR URL 匹配逻辑（http/https 开头精确匹配）
 - **v1.5.0** - 新增公众号文章卡片转发功能（RapidOCR URL 识别 + 转发浮窗自动化）
