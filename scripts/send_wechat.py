@@ -863,6 +863,29 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
         return False
     print(f"  ✅ 找到卡片位置: {card_pos}\n")
 
+    # Debug: 在截图上画红圈标记卡片位置
+    if debug:
+        img = cv2.imread("/tmp/wechat_window.png")
+        if img is not None:
+            # card_pos 是屏幕坐标，需要转回截图内坐标
+            # 重新获取窗口偏移
+            k = 2
+            window_list = Quartz.CGWindowListCopyWindowInfo(k | 1, Quartz.kCGNullWindowID)
+            wx, wy = 0, 0
+            for win in window_list:
+                owner = win.get("kCGWindowOwnerName", "")
+                name = win.get("kCGWindowName", "")
+                if "微信" in owner and "窗口" not in name:
+                    b = win.get("kCGWindowBounds", {})
+                    wx, wy = b.get("X", 0), b.get("Y", 0)
+                    break
+            # 屏幕坐标转截图内坐标
+            cx_in_img = int(card_pos[0] - wx)
+            cy_in_img = int(card_pos[1] - wy)
+            cv2.circle(img, (cx_in_img, cy_in_img), 25, (0, 0, 255), 4)
+            cv2.imwrite("/tmp/card_position_debug.png", img)
+            print(f"  [DEBUG] 已保存标记图到 /tmp/card_position_debug.png")
+
     # Step 4: 右键点击并选择引用
     print("[步骤 4/4] 右键点击卡片...")
 
