@@ -671,38 +671,30 @@ def find_card_center():
     import cv2
     import numpy as np
 
-    # 获取微信窗口坐标
+    # 获取微信窗口坐标（用于转换 OCR 坐标到屏幕坐标）
     kExcludeDesktopElements = 2
     kOnScreenOnly = 1
     window_list = Quartz.CGWindowListCopyWindowInfo(
         kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
     )
-
-    # 找微信窗口
-    wechat_win = None
+    wx, wy, ww, wh = 0, 0, 0, 0
     for win in window_list:
         owner = win.get("kCGWindowOwnerName", "")
-        if "WeChat" in owner or "微信" in owner:
-            b = win.get("kCGWindowBounds", {})
-            x, y = b.get("X", 0), b.get("Y", 0)
-            ww, wh = b.get("Width", 0), b.get("Height", 0)
-            if ww > 100 and wh > 100 and ww < 1500 and wh < 1000:
-                wechat_win = (x, y, ww, wh)
+        name = win.get("kCGWindowName", "")
+        if "微信" in owner or "WeChat" in owner:
+            if "窗口" not in name:  # 跳过内置浏览器
+                b = win.get("kCGWindowBounds", {})
+                wx, wy = b.get("X", 0), b.get("Y", 0)
+                ww, wh = b.get("Width", 0), b.get("Height", 0)
+                print(f"  [卡片检测] 窗口(pts): ({wx}, {wy}) {ww}x{wh}")
                 break
 
-    if not wechat_win:
-        print("  [卡片检测] 未找到微信窗口")
-        return None
-
-    wx, wy, ww, wh = wechat_win
-    print(f"  [卡片检测] 窗口: ({wx},{wy}) {ww}x{wh}")
-
-    # 只截取窗口区域
+    # 用 peekaboo 截取当前激活窗口（只截微信窗口）
     subprocess.run(
-        f"screencapture -x -R{wx},{wy},{ww},{wh} /tmp/wechat_window.png",
-        shell=True, capture_output=True
+        ["peekaboo", "image", "--app", "WeChat", "--mode", "frontmost", "--path", "/tmp/wechat_window.png"],
+        capture_output=True
     )
-    time.sleep(0.2)
+    time.sleep(0.3)
 
     # 读取截图
     img = cv2.imread("/tmp/wechat_window.png")
@@ -711,6 +703,7 @@ def find_card_center():
         return None
 
     h, w = img.shape[:2]
+    print(f"  [卡片检测] 截图: {w}x{h}")
 
     # 使用 RapidOCR 找文章标题
     result = RAPIDOCR_READER("/tmp/wechat_window.png")
@@ -777,38 +770,17 @@ def find_card_center():
         print("  [卡片检测] 未找到卡片（文字+灰色直线）")
         return None
 
-    # 过滤：只保留右侧区域（聊天窗口的右侧 = 我的卡片）
-    # 微信聊天区域在窗口的右侧 60-70% 位置
-    # 窗口右侧边缘
-    chat_right_edge = wx + ww
-    # 聊天区域大约从窗口右侧 30% 处开始
-    chat_start_x = wx + int(ww * 0.35)
-    # 聊天区域的中线
-    chat_mid_x = wx + int(ww * 0.65)
-
-    print(f"  [卡片过滤] 窗口: ({wx},{wy}) {ww}x{wh}, 聊天区域x>={chat_start_x}, 中线{chat_mid_x}")
-
-    # 只保留在聊天区域右侧的文字
-    right_candidates = [c for c in article_candidates if c[0] > chat_mid_x]
-    print(f"  [卡片过滤] 右侧候选: {len(right_candidates)} 个, x范围=[{min([c[0] for c in right_candidates]) if right_candidates else 'N/A'}, {max([c[0] for c in right_candidates]) if right_candidates else 'N/A'}], chat_mid_x={chat_mid_x}")
-    if right_candidates:
-        for i, c in enumerate(sorted(right_candidates, key=lambda x: x[0], reverse=True)[:3]):
-            print(f"    [{i}] x={c[0]}, y={c[1]}, text={c[-1][:30]}")
-    else:
-        # 没有右侧候选，显示所有候选的x分布
-        all_x = [c[0] for c in article_candidates]
-        print(f"  [卡片过滤] 无右侧候选，所有x: min={min(all_x)}, max={max(all_x)}")
-        print(f"  [卡片过滤] 前5个候选: {[(c[0], c[1], c[-1][:20]) for c in sorted(article_candidates, key=lambda x: x[1], reverse=True)[:5]]}")
-
-    # 如果右侧没有，fallback 到所有候选
+    # 过滤：只保留右侧聊天区域的候选（聊天区域在窗口右侧，约 x > 窗口宽度 * 0.4）
+    chat_start_x = int(w * 0.4)
+    right_candidates = [c for c in article_candidates if c[0] > chat_start_x]
     candidates_to_use = right_candidates if right_candidates else article_candidates
-    print(f"  [卡片过滤] 最终使用: {len(candidates_to_use)} 个")
-
+    print(f"  [卡片过滤] 右侧候选: {len(right_candidates)}/{len(article_candidates)} 个")
+    
     # 按 Y 坐标排序（Y 越大越靠下 = 越新的消息）
     candidates_to_use.sort(key=lambda c: c[1], reverse=True)
-
     best = candidates_to_use[0]
     cx, cy = best[0], best[1]
+    print(f"  [卡片过滤] 选中最新: ({cx}, {cy})")
 
     # 卡片中心：在标题下方查找灰色分割线的位置
     gray_lower = np.array([150, 150, 150])
@@ -829,7 +801,18 @@ def find_card_center():
             break
 
     print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选，选中底部: ({cx}, {card_cy})")
-    return (cx, card_cy)
+    # peekaboo frontmost 截取的坐标直接是屏幕坐标
+    # CGWindowListCopyWindowInfo 返回的是屏幕坐标（可能是 pixels 或 points）
+    # screencapture -R 也使用相同单位
+    # OCR 坐标在截图内，直接加上窗口偏移即可
+    window_pixel_x = int(wx)
+    window_pixel_y = int(wy)
+    
+    # OCR 坐标是截图内像素，加上窗口像素偏移转屏幕像素
+    screen_cx = window_pixel_x + cx
+    screen_cy = window_pixel_y + card_cy
+    print(f"  [卡片检测] 卡片中心(屏幕): ({screen_cx}, {screen_cy})")
+    return (screen_cx, screen_cy)
 
 
 def wait_for_confirm(step_msg, sleep_sec=1.0):
@@ -880,29 +863,26 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
         return False
     print(f"  ✅ 找到卡片位置: {card_pos}\n")
 
-    # 移动鼠标到卡片位置
-    move = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventMouseMoved, card_pos, Quartz.kCGMouseButtonLeft
-    )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, move)
-    wait_for_confirm(f"鼠标已移到卡片 {card_pos}，请确认...")
-
     # Step 4: 右键点击并选择引用
     print("[步骤 4/4] 右键点击卡片...")
 
-    # 右键点击
-    e_down = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventRightMouseDown, card_pos, Quartz.kCGMouseButtonRight
-    )
-    e_up = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventRightMouseUp, card_pos, Quartz.kCGMouseButtonRight
-    )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
-    time.sleep(0.05)
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+    # 等待界面稳定
+    time.sleep(0.5)
+    
+    # 使用 pyautogui 右键点击
+    click_x = int(card_pos[0])
+    click_y = int(card_pos[1])
+    pyautogui.moveTo(click_x, click_y, duration=0.2)
     time.sleep(0.3)
+    # 模拟右键按下
+    pyautogui.mouseDown(button='right')
+    time.sleep(0.05)
+    pyautogui.mouseUp(button='right')
+    time.sleep(0.5)
+    
+    print(f"  已右键点击 ({click_x}, {click_y})")
 
-    # 检查右键菜单是否出现（仅调试模式）
+    # 检查右键菜单是否出现（仅调试模式）- 用全屏截图才能看到浮窗
     menu_visible = True  # 默认认为成功
     if debug:
         subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_check.png"], capture_output=True)
