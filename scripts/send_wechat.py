@@ -713,8 +713,7 @@ def find_card_center():
     wx, wy, ww, wh = wechat_win
 
     # 使用 RapidOCR 找文章标题
-    reader = RapidOCR()
-    result = reader("/tmp/card_detect.png")
+    result = RAPIDOCR_READER("/tmp/card_detect.png")
 
     if not result or not result.txts:
         print("  [卡片检测] OCR 未找到文字")
