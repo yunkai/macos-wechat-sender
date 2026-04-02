@@ -67,27 +67,68 @@ def test_send_file():
         return False
 
 
-def test_forward_article_with_quote():
-    """测试转发文章卡片并引用发送消息"""
+def resize_wechat_window(width, height):
+    """调整微信窗口大小"""
+    script = f'''
+    tell application "System Events"
+        tell process "微信"
+            set size of window 1 to {{{width}, {height}}}
+        end tell
+    end tell
+    '''
+    os.system(f"osascript -e '{script}'")
+    time.sleep(0.5)
+
+
+def test_forward_article_with_quote_small_window():
+    """测试转发文章卡片并引用发送消息（小窗口）"""
     print("=" * 50)
-    print("测试 3: 转发文章卡片并引用发送消息")
+    print("测试 3a: 转发文章卡片并引用（小窗口 600x500）")
     print("=" * 50)
     
     TARGET = "文件传输助手"
     VIA = "文件传输助手"
     ARTICLE_URL = "http://mp.weixin.qq.com/s?__biz=MzAxODc1MjI1MQ==&mid=2247502933&idx=7&sn=fa9ea4b1e66eb4393d8131f1ebda6c24&chksm=9bd3fbc1aca472d770920357872ca2772830b4d2883a7a35c3cc50595fe7c3da6741c37f6d65#rd"
-    QUOTE_MSG = "这是一条引用测试消息"
+    QUOTE_MSG = "小窗口测试"
     
     try:
+        # 调整窗口大小
+        resize_wechat_window(600, 500)
         result = forward_article_with_quote(ARTICLE_URL, TARGET, QUOTE_MSG, VIA)
         if result:
-            print(f"✅ 测试通过: 文章已转发，引用消息已发送给 '{TARGET}'")
+            print(f"✅ 测试通过（小窗口）: 文章已转发，引用消息已发送给 '{TARGET}'")
             return True
         else:
-            print(f"⚠️ 测试未完成: 转发或引用过程未完成")
+            print(f"⚠️ 测试未完成（小窗口）")
             return False
     except Exception as e:
-        print(f"❌ 测试失败: {e}")
+        print(f"❌ 测试失败（小窗口）: {e}")
+        return False
+
+
+def test_forward_article_with_quote_large_window():
+    """测试转发文章卡片并引用发送消息（大窗口）"""
+    print("=" * 50)
+    print("测试 3b: 转发文章卡片并引用（大窗口 1200x700）")
+    print("=" * 50)
+    
+    TARGET = "文件传输助手"
+    VIA = "文件传输助手"
+    ARTICLE_URL = "http://mp.weixin.qq.com/s?__biz=MzAxODc1MjI1MQ==&mid=2247502933&idx=7&sn=fa9ea4b1e66eb4393d8131f1ebda6c24&chksm=9bd3fbc1aca472d770920357872ca2772830b4d2883a7a35c3cc50595fe7c3da6741c37f6d65#rd"
+    QUOTE_MSG = "大窗口测试"
+    
+    try:
+        # 调整窗口大小
+        resize_wechat_window(1200, 700)
+        result = forward_article_with_quote(ARTICLE_URL, TARGET, QUOTE_MSG, VIA)
+        if result:
+            print(f"✅ 测试通过（大窗口）: 文章已转发，引用消息已发送给 '{TARGET}'")
+            return True
+        else:
+            print(f"⚠️ 测试未完成（大窗口）")
+            return False
+    except Exception as e:
+        print(f"❌ 测试失败（大窗口）: {e}")
         return False
 
 
@@ -122,7 +163,9 @@ def main():
     print("")
     result2 = test_send_file()
     print("")
-    result3 = test_forward_article_with_quote()
+    result3a = test_forward_article_with_quote_small_window()
+    print("")
+    result3b = test_forward_article_with_quote_large_window()
     print("")
     result4 = test_find_card_center()
     
@@ -133,10 +176,11 @@ def main():
     print("=" * 50)
     print(f"测试 1 (发送文本消息): {'✅ 通过' if result1 else '❌ 失败'}")
     print(f"测试 2 (发送文件): {'✅ 通过' if result2 else '❌ 失败'}")
-    print(f"测试 3 (转发文章+引用): {'✅ 通过' if result3 else '❌ 失败'}")
+    print(f"测试 3a (小窗口转发+引用): {'✅ 通过' if result3a else '❌ 失败'}")
+    print(f"测试 3b (大窗口转发+引用): {'✅ 通过' if result3b else '❌ 失败'}")
     print(f"测试 4 (卡片检测): {'✅ 通过' if result4 else '❌ 失败'}")
     
-    if all([result1, result2, result3, result4]):
+    if all([result1, result2, result3a, result3b, result4]):
         print("")
         print("🎉 所有测试通过！")
         return 0
