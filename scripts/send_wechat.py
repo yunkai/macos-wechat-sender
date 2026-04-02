@@ -688,29 +688,37 @@ def find_card_center():
 
     h, w = img.shape[:2]
 
-    # 获取微信窗口坐标
+    # 获取微信窗口坐标（更精确地找聊天窗口）
     kExcludeDesktopElements = 2
     kOnScreenOnly = 1
     window_list = Quartz.CGWindowListCopyWindowInfo(
         kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
     )
 
-    wechat_win = None
+    # 找微信窗口，取中等大小的窗口（不是最大的也不是最小的）
+    wechat_wins = []
     for win in window_list:
         owner = win.get("kCGWindowOwnerName", "")
         if "WeChat" in owner or "微信" in owner:
             b = win.get("kCGWindowBounds", {})
             x, y = b.get("X", 0), b.get("Y", 0)
             ww, wh = b.get("Width", 0), b.get("Height", 0)
-            if ww > 100 and wh > 100 and ww < 1400:
-                wechat_win = (x, y, ww, wh)
-                break
+            # 过滤：宽度在 300-900，高度在 200-800 的窗口
+            if 300 < ww < 900 and 200 < wh < 800:
+                wechat_wins.append((x, y, ww, wh))
 
-    if not wechat_win:
+    if not wechat_wins:
         print("  [卡片检测] 未找到微信窗口")
         return None
 
-    wx, wy, ww, wh = wechat_win
+    # 按宽度排序，取中等大小的
+    wechat_wins.sort(key=lambda w: w[2])  # 按宽度从小到大
+    # 取中间位置的窗口（排除最大和最小）
+    if len(wechat_wins) >= 3:
+        wx, wy, ww, wh = wechat_wins[len(wechat_wins)//2]
+    else:
+        wx, wy, ww, wh = wechat_wins[len(wechat_wins)//2] if wechat_wins else (0, 0, 0, 0)
+    print(f"  [卡片检测] 使用窗口: ({wx},{wy}) {ww}x{wh}")
 
     # 使用 RapidOCR 找文章标题
     result = RAPIDOCR_READER("/tmp/card_detect.png")
@@ -778,10 +786,31 @@ def find_card_center():
         return None
 
     # 过滤：只保留右侧区域（聊天窗口的右侧 = 我的卡片）
-    chat_mid_x = int(wx + ww * 0.5)
+    # 微信聊天区域在窗口的右侧 60-70% 位置
+    # 窗口右侧边缘
+    chat_right_edge = wx + ww
+    # 聊天区域大约从窗口右侧 30% 处开始
+    chat_start_x = wx + int(ww * 0.35)
+    # 聊天区域的中线
+    chat_mid_x = wx + int(ww * 0.65)
 
+    print(f"  [卡片过滤] 窗口: ({wx},{wy}) {ww}x{wh}, 聊天区域x>={chat_start_x}, 中线{chat_mid_x}")
+
+    # 只保留在聊天区域右侧的文字
     right_candidates = [c for c in article_candidates if c[0] > chat_mid_x]
+    print(f"  [卡片过滤] 右侧候选: {len(right_candidates)} 个, x范围=[{min([c[0] for c in right_candidates]) if right_candidates else 'N/A'}, {max([c[0] for c in right_candidates]) if right_candidates else 'N/A'}], chat_mid_x={chat_mid_x}")
+    if right_candidates:
+        for i, c in enumerate(sorted(right_candidates, key=lambda x: x[0], reverse=True)[:3]):
+            print(f"    [{i}] x={c[0]}, y={c[1]}, text={c[-1][:30]}")
+    else:
+        # 没有右侧候选，显示所有候选的x分布
+        all_x = [c[0] for c in article_candidates]
+        print(f"  [卡片过滤] 无右侧候选，所有x: min={min(all_x)}, max={max(all_x)}")
+        print(f"  [卡片过滤] 前5个候选: {[(c[0], c[1], c[-1][:20]) for c in sorted(article_candidates, key=lambda x: x[1], reverse=True)[:5]]}")
+
+    # 如果右侧没有，fallback 到所有候选
     candidates_to_use = right_candidates if right_candidates else article_candidates
+    print(f"  [卡片过滤] 最终使用: {len(candidates_to_use)} 个")
 
     # 按 Y 坐标排序（Y 越大越靠下 = 越新的消息）
     candidates_to_use.sort(key=lambda c: c[1], reverse=True)
@@ -820,7 +849,7 @@ def wait_for_confirm(step_msg, sleep_sec=1.0):
         print(f"\n[跳过确认] {step_msg} (非交互模式)")
 
 
-def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=False):
+def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=True):
     """
     转发公众号文章卡片并引用该卡片发送文本消息
 
