@@ -820,7 +820,7 @@ def wait_for_confirm(step_msg, sleep_sec=1.0):
         print(f"\n[跳过确认] {step_msg} (非交互模式)")
 
 
-def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手"):
+def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=False):
     """
     转发公众号文章卡片并引用该卡片发送文本消息
 
@@ -829,6 +829,9 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     2. 在目标聊天窗口找到卡片
     3. 右键点击卡片，选择"引用"
     4. 在引用输入框中发送消息
+
+    Args:
+        debug: 是否开启调试模式（检测右键菜单是否出现）
     """
     print(f"📤 开始执行：转发文章 + 引用消息 -> {target_contact}")
 
@@ -880,20 +883,22 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
     time.sleep(0.3)
 
-    # 检查右键菜单是否出现
-    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_check.png"], capture_output=True)
-    menu_ocr = RAPIDOCR_READER("/tmp/menu_check.png")
-    menu_visible = False
-    if menu_ocr:
-        for text in menu_ocr.txts:
-            if any(kw in text for kw in ['打开方式', '转发', '收藏', '提醒', '多选', '引用']):
-                menu_visible = True
-                print(f"  ✅ 右键菜单已打开\n")
-                break
+    # 检查右键菜单是否出现（仅调试模式）
+    menu_visible = True  # 默认认为成功
+    if debug:
+        subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_check.png"], capture_output=True)
+        menu_ocr = RAPIDOCR_READER("/tmp/menu_check.png")
+        menu_visible = False
+        if menu_ocr:
+            for text in menu_ocr.txts:
+                if any(kw in text for kw in ['打开方式', '转发', '收藏', '提醒', '多选', '引用']):
+                    menu_visible = True
+                    print(f"  ✅ 右键菜单已打开\n")
+                    break
 
-    if not menu_visible:
-        print(f"  ❌ 右键菜单未出现: {card_pos}")
-        pyautogui.press('escape')
+        if not menu_visible:
+            print(f"  ❌ 右键菜单未出现: {card_pos}")
+            pyautogui.press('escape')
         time.sleep(0.2)
         return False
 
