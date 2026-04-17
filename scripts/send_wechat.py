@@ -510,19 +510,17 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         print("  [2/5] ⚠️ 未找到链接，请手动点击")
         return False
     x, y = pos
-    print(f"  双击中 ({x}, {y})...")
-    for _ in range(2):
-        e_down = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseDown, (x, y), Quartz.kCGMouseButtonLeft
-        )
-        e_up = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseUp, (x, y), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
-        time.sleep(0.05)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
-        time.sleep(0.1)
-    print("  [2/5] ✅ 已点击链接，动态等待文章页面加载...")
+    print(f"  单击 ({x}, {y})...")
+    e_down = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseDown, (x, y), Quartz.kCGMouseButtonLeft
+    )
+    e_up = Quartz.CGEventCreateMouseEvent(
+        None, Quartz.kCGEventLeftMouseUp, (x, y), Quartz.kCGMouseButtonLeft
+    )
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+    time.sleep(0.05)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+    print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
 
     # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
     print("  [3/5] 点击右上角菜单按钮...")
@@ -531,11 +529,8 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     subprocess.run(["killall", "NotificationCenter"])
     time.sleep(0.1)
 
-    # 激活微信
-    subprocess.run(["open", "-a", "WeChat"])
-    time.sleep(0.2)
-
-    # 等待浏览器窗口出现（双击后先等1.5秒让窗口打开，再开始轮询）
+    # 等待浏览器窗口出现（单击后先等1.5秒让窗口打开，再开始轮询）
+    # 注意：不要在这里激活微信，否则会把刚打开的浏览器窗口盖住
     print("  [wait] 等待内置浏览器窗口出现（先等1.5秒）...")
     time.sleep(1.5)
     browser_win = wait_for_browser_window(timeout=20, interval=1.0)
@@ -764,14 +759,14 @@ def find_card_center():
             scan_x_start = max(0, cx - 200)
             scan_x_end = min(w, cx + 200)
             scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
-            
+
             # 检查是否有灰色直线（白天模式）
             gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
             if cv2.countNonZero(gray_mask) > 50:
                 has_line = True
                 line_y = scan_y
                 break
-            
+
             # 检查是否有浅色直线（夜间模式，比背景亮）
             if is_dark_bg:
                 bg_brightness = np.mean(scan_region)
@@ -793,7 +788,7 @@ def find_card_center():
     right_candidates = [c for c in article_candidates if c[0] > chat_start_x]
     candidates_to_use = right_candidates if right_candidates else article_candidates
     print(f"  [卡片过滤] 右侧候选: {len(right_candidates)}/{len(article_candidates)} 个")
-    
+
     # 按 Y 坐标排序（Y 越大越靠下 = 最下面的卡片）
     candidates_to_use.sort(key=lambda c: c[1], reverse=True)
     best = candidates_to_use[0]
@@ -811,7 +806,7 @@ def find_card_center():
         scan_x_start = max(0, cx - 200)
         scan_x_end = min(w, cx + 200)
         scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
-        
+
         # 检查是否有灰色直线（白天模式）
         gray_lower = np.array([150, 150, 150])
         gray_upper = np.array([210, 210, 210])
@@ -820,7 +815,7 @@ def find_card_center():
             card_cy = scan_y
             print(f"  [卡片检测] 找到分割线在 y={scan_y} (灰色)")
             break
-        
+
         # 检查是否有浅色直线（夜间模式，比背景亮）
         bg_brightness = np.mean(scan_region)
         light_mask = scan_region > (bg_brightness + 30)
@@ -836,7 +831,7 @@ def find_card_center():
     # OCR 坐标在截图内，直接加上窗口偏移即可
     window_pixel_x = int(wx)
     window_pixel_y = int(wy)
-    
+
     # OCR 坐标是截图内像素，加上窗口像素偏移转屏幕像素
     screen_cx = window_pixel_x + cx
     screen_cy = window_pixel_y + card_cy
@@ -920,7 +915,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
 
     # 等待界面稳定
     time.sleep(0.5)
-    
+
     # 使用 pyautogui 右键点击
     click_x = int(card_pos[0])
     click_y = int(card_pos[1])
@@ -931,7 +926,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
     time.sleep(0.05)
     pyautogui.mouseUp(button='right')
     time.sleep(0.5)
-    
+
     print(f"  已右键点击 ({click_x}, {click_y})")
 
     # 检查右键菜单是否出现（仅调试模式）- 用全屏截图才能看到浮窗
