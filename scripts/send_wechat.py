@@ -535,8 +535,10 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.2)
 
-    # 动态等待浏览器窗口出现（窗口稳定即说明文章加载完成）
-    browser_win = wait_for_browser_window(timeout=20, interval=0.8)
+    # 等待浏览器窗口出现（双击后先等1.5秒让窗口打开，再开始轮询）
+    print("  [wait] 等待内置浏览器窗口出现（先等1.5秒）...")
+    time.sleep(1.5)
+    browser_win = wait_for_browser_window(timeout=20, interval=1.0)
 
     win_x, win_y, win_w, win_h = None, None, None, None
     if browser_win:

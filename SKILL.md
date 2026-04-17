@@ -318,5 +318,61 @@ A: 检查是否每次都执行了 `clean_window()`，窗口状态可能混乱了
 ### Q: 如何发送文件？
 A: 使用 `-f` 选项：`python3 send_wechat.py 小明 -f /path/to/file.pdf`
 
+### Q: skill_view 找不到这个 skill 怎么办？
+A: 这个 skill 的目录名是 `macos-wechat-sender`，而 front matter 中的 `name: wechat-send-message` 是展示名。直接用目录名调用：
+```bash
+skill_view(name='macos-wechat-sender')
+```
+
+### Q: 外部脚本 import 报错 `ModuleNotFoundError: No module named 'send_wechat'`？
+A: 这是因为 skill 的安装路径变了。**正确路径**是 `~/.hermes/skills/openclaw-imports/macos-wechat-sender/scripts`（注意不是 `~/.openclaw/workspace/skills/...`）。
+
+正确的 import 方式：
+```python
+import os
+import sys
+
+SKILL_DIR = os.path.expanduser('~/.hermes/skills/openclaw-imports/macos-wechat-sender/scripts')
+sys.path.insert(0, SKILL_DIR)
+
+from send_wechat import forward_article_with_quote
+
+# 使用
+forward_article_with_quote(
+    article_url="https://mp.weixin.qq.com/s/xxx",
+    target_contact="果光",
+    quote_message="师兄们早安[太阳][合十]，今日共读共修："
+)
+```
+
+⚠️ **警惕路径陷阱**：如果脚本里有 `~/.openclaw/workspace/skills/macos-wechat-sender/scripts` 这个路径，它是**旧的**，需要改成 `~/.hermes/skills/openclaw-imports/macos-wechat-sender/scripts`。
+
 ### Q: 支持语音消息吗？
 A: 不支持。语音消息需要更复杂的原生接口支持。
+
+### Q: 通过 cron 或 isolated agent 运行时，peekaboo 报 "Screen recording permission is required"？
+A: 这是 TCC（Transparency, Consent, and Control）权限问题。`peekaboo` 截图工具需要屏幕录制权限。当通过 cron 定时任务或 Hermes isolated agent node 运行时，需要额外授权：
+
+1. **确定 node 路径**：`which node` 或 `ls -la /opt/homebrew/bin/node`（Homebrew 安装的 node 是符号链接）
+2. **添加到屏幕录制白名单**：打开 **系统设置 → 隐私与安全性 → 屏幕录制**，点击 + 添加对应的 node 可执行文件
+   - 如果用 cron 触发：添加 `/opt/homebrew/bin/node`（或实际 node 路径，如 `/opt/homebrew/Cellar/node/xx.x.x/bin/node`）
+   - 如果用 Hermes isolated agent：需要给 hermes-agent 的 node 进程授权
+3. **TCC 缓存需要登出/登录才能生效**：仅添加权限可能不够，需要完全登出后重新登录 macOS
+4. **验证方法**：手动运行 `peekaboo image --mode screen --path /tmp/test.png`，如果成功说明权限已生效
+
+⚠️ 注意：macOS TCC 权限是针对 .app bundle 授予的，CLI 工具（如 `peekaboo`）本身无法被系统识别为"已授权应用"。正确做法是给**启动 CLI 的解释器或 agent 进程**（即 node）授予屏幕录制权限。
+
+### Q: 转发文章时报"未找到微信浏览器窗口"？
+A: 这是 `wait_for_browser_window()` 函数的时机问题，**不是窗口名检测问题**。调试经验（2026-04-17）：
+
+**已确认的事实**：
+- 微信内置浏览器窗口名**确实包含"窗口"**，原文是 `微信 (窗口)`
+- 原检测逻辑 `and "窗口" in name` **本身是正确的**，无需修改
+
+**真正原因**：双击链接后，浏览器窗口需要时间打开（通常 2~4 秒），但轮询立即开始，导致超时。
+
+**修复方法**：`forward_article_via_browser()` 中双击链接后，先等 **1.5 秒**再开始轮询，超时保持 **20 秒**。已在 `send_wechat.py` 中修复。
+
+**踩坑记录**：不要用 `osascript` + `set frontmost to true` 来"激活浏览器窗口"——这会把**整个微信进程**激活到前台，反而把聊天主窗口拉到最前面，起到反效果。
+
+如遇此问题，确认 `send_wechat.py` 已更新到最新版本。
