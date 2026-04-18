@@ -583,11 +583,42 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
     time.sleep(0.4)  # 等待菜单出现
 
-    # 按向下键选中"转发给朋友"，按回车确认
-    print("  选择「转发给朋友」...")
-    pyautogui.press('down')
-    time.sleep(0.15)
-    pyautogui.press('return')
+    # 用 RapidOCR 识别菜单项，找到"转发给朋友"并点击
+    print("  截图识别菜单项...")
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/menu_items.png"])
+    menu_ocr = RAPIDOCR_READER("/tmp/menu_items.png")
+
+    clicked = False
+    if menu_ocr:
+        for i, text in enumerate(menu_ocr.txts):
+            if "转发" in text:
+                bbox = menu_ocr.boxes[i]
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                cx = int((min(xs) + max(xs)) // 2)
+                cy = int((min(ys) + max(ys)) // 2)
+                print(f"  找到「{text}」at ({cx},{cy})")
+
+                # 点击该项
+                e_down = Quartz.CGEventCreateMouseEvent(
+                    None, Quartz.kCGEventLeftMouseDown, (cx, cy), Quartz.kCGMouseButtonLeft
+                )
+                e_up = Quartz.CGEventCreateMouseEvent(
+                    None, Quartz.kCGEventLeftMouseUp, (cx, cy), Quartz.kCGMouseButtonLeft
+                )
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+                time.sleep(0.05)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+                clicked = True
+                break
+
+    if not clicked:
+        print("  ⚠️ 未找到「转发给朋友」，尝试盲操作...")
+        pyautogui.press('down')
+        time.sleep(0.15)
+        pyautogui.press('return')
+        time.sleep(0.5)
+
     time.sleep(0.5)
     print("  [3/5] ✅ 已打开转发浮窗")
 

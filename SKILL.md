@@ -350,6 +350,16 @@ forward_article_with_quote(
 ### Q: 支持语音消息吗？
 A: 不支持。语音消息需要更复杂的原生接口支持。
 
+### Q: 如何通过 Hermes WeChat 发送本地图片给用户？
+A: **不要**用 `send_message` 工具发送图片（会失败）。正确方式是直接在回复文本中包含 `MEDIA:/绝对路径`：
+
+```
+这是截图：
+MEDIA:/tmp/send_button.png
+```
+
+Gateway 的 `_deliver_media_from_response()` 会自动提取并通过 `adapter.send_image_file()` 发送图片到微信。这个机制和 TTS 语音消息的发送方式一致。
+
 ### Q: 通过 cron 或 isolated agent 运行时，peekaboo 报 "Screen recording permission is required"？
 A: 这是 TCC（Transparency, Consent, and Control）权限问题。`peekaboo` 截图工具需要屏幕录制权限。当通过 cron 定时任务或 Hermes isolated agent node 运行时，需要额外授权：
 
