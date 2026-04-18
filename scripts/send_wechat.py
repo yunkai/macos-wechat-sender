@@ -1010,23 +1010,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
                 break
 
     if popup_win is None:
-        print("  ⚠️ 未找到菜单弹出窗口，回退到盲操作")
-        for _ in range(5):
-            pyautogui.press('down')
-            time.sleep(0.05)
-        pyautogui.press('return')
-        time.sleep(0.3)
-        print("  ✅ 已进入引用输入模式\n")
-        pyperclip.copy(quote_message)
-        time.sleep(0.1)
-        pyautogui.keyDown('command')
-        pyautogui.press('v')
-        pyautogui.keyUp('command')
-        time.sleep(0.1)
-        pyautogui.press('return')
-        time.sleep(0.2)
-        print(f"✅ 引用消息已发送: \"{quote_message[:30]}...\" -> {target_contact}")
-        return True
+        raise RuntimeError("[步骤 4/4] 未找到菜单弹出窗口，请检查右键是否成功弹出菜单")
 
     # 只截取菜单弹出窗口（避免全屏其他"引用"字样干扰）
     # peekaboo 的 --window-id 需要数值ID，用 --app WeChat --mode frontmost 截主窗口
@@ -1067,11 +1051,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
                 break
 
     if not quote_clicked:
-        print("  ⚠️ OCR未找到「引用」，回退到盲操作")
-        for _ in range(5):
-            pyautogui.press('down')
-            time.sleep(0.05)
-        pyautogui.press('return')
+        raise RuntimeError("[步骤 4/4] OCR未找到「引用」菜单项，请检查菜单是否正常弹出")
 
     time.sleep(0.3)
     print("  ✅ 已进入引用输入模式\n")
