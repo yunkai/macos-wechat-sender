@@ -981,13 +981,98 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
 
     wait_for_confirm("步骤4完成，请确认...")
 
-    # 选择"引用"
+    # 选择"引用"——右键点击后截图，用OCR识别菜单项并点击
     print("[步骤 4/4] 选择「引用」...")
-    # 菜单顺序：打开方式(1) 转发(2) 收藏(3) 提醒(4) 多选(5) 引用(6)
-    for _ in range(6):
-        pyautogui.press('down')
-        time.sleep(0.03)
-    pyautogui.press('return')
+    time.sleep(0.5)  # 等待菜单完全渲染
+
+    # 动态获取所有微信窗口，找到最小的那个（右键弹出菜单）
+    kExcludeDesktopElements = 2
+    kOnScreenOnly = 1
+    window_list = Quartz.CGWindowListCopyWindowInfo(
+        kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
+    )
+    popup_win = None
+    for win in window_list:
+        owner = win.get("kCGWindowOwnerName", "")
+        if "微信" in owner or "WeChat" in owner:
+            b = win.get("kCGWindowBounds", {})
+            # 弹出菜单窗口比主窗口小得多（通常宽<400，高<500）
+            w = b.get("Width", 0)
+            h = b.get("Height", 0)
+            if w > 0 and h > 0 and w < 400 and h < 500:
+                popup_win = {
+                    "x": b.get("X", 0),
+                    "y": b.get("Y", 0),
+                    "w": w,
+                    "h": h,
+                }
+                print(f"  [菜单窗口] 位置({popup_win['x']:.0f},{popup_win['y']:.0f}) 大小{popup_win['w']:.0f}x{popup_win['h']:.0f}")
+                break
+
+    if popup_win is None:
+        print("  ⚠️ 未找到菜单弹出窗口，回退到盲操作")
+        for _ in range(5):
+            pyautogui.press('down')
+            time.sleep(0.05)
+        pyautogui.press('return')
+        time.sleep(0.3)
+        print("  ✅ 已进入引用输入模式\n")
+        pyperclip.copy(quote_message)
+        time.sleep(0.1)
+        pyautogui.keyDown('command')
+        pyautogui.press('v')
+        pyautogui.keyUp('command')
+        time.sleep(0.1)
+        pyautogui.press('return')
+        time.sleep(0.2)
+        print(f"✅ 引用消息已发送: \"{quote_message[:30]}...\" -> {target_contact}")
+        return True
+
+    # 只截取菜单弹出窗口（避免全屏其他"引用"字样干扰）
+    # peekaboo 的 --window-id 需要数值ID，用 --app WeChat --mode frontmost 截主窗口
+    # 但菜单弹出时主窗口可能不是 frontmost，用窗口列表找到的 bounds 直接裁剪
+    subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/quote_menu.png"])
+    # 用 PIL 裁剪出菜单区域（坐标已经是屏幕坐标）
+    menu_img = Image.open("/tmp/quote_menu.png")
+    cropped = menu_img.crop((
+        int(popup_win["x"]), int(popup_win["y"]),
+        int(popup_win["x"] + popup_win["w"]), int(popup_win["y"] + popup_win["h"])
+    ))
+    cropped.save("/tmp/quote_menu_crop.png")
+    menu_ocr = RAPIDOCR_READER("/tmp/quote_menu_crop.png")
+
+    quote_clicked = False
+    if menu_ocr:
+        for i, text in enumerate(menu_ocr.txts):
+            t = text.strip()
+            # 模糊匹配：OCR可能把"引用"识别成各种形式
+            if "引用" in t or t in ["引用", "引用 "]:
+                bbox = menu_ocr.boxes[i]
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                # OCR 坐标是相对于裁剪图片的，转为屏幕坐标
+                cx = int((min(xs) + max(xs)) // 2) + int(popup_win["x"])
+                cy = int((min(ys) + max(ys)) // 2) + int(popup_win["y"])
+                print(f"  找到「{text}」at ({cx},{cy})")
+                e_down = Quartz.CGEventCreateMouseEvent(
+                    None, Quartz.kCGEventLeftMouseDown, (cx, cy), Quartz.kCGMouseButtonLeft
+                )
+                e_up = Quartz.CGEventCreateMouseEvent(
+                    None, Quartz.kCGEventLeftMouseUp, (cx, cy), Quartz.kCGMouseButtonLeft
+                )
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+                time.sleep(0.05)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+                quote_clicked = True
+                break
+
+    if not quote_clicked:
+        print("  ⚠️ OCR未找到「引用」，回退到盲操作")
+        for _ in range(5):
+            pyautogui.press('down')
+            time.sleep(0.05)
+        pyautogui.press('return')
+
     time.sleep(0.3)
     print("  ✅ 已进入引用输入模式\n")
 
