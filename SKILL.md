@@ -388,3 +388,25 @@ A: 这是 `wait_for_browser_window()` 函数的时机问题，**不是窗口名�
 4. 超时保持 **20 秒**
 
 已在 `send_wechat.py` 中修复。如遇此问题，确认 `send_wechat.py` 已更新到最新版本。
+
+### Q: 转发文章 Step 3 找不到「转发」菜单项导致整条消息失败？
+>A: 这是 Step 3 的 OCR 匹配和 fallback 机制问题。
+
+**问题 1：fallback 盲操作不可靠**
+代码在找不到「转发」时走 fallback：`↓` + `Enter`。但 Down 键在不知道焦点在哪的情况下是乱按，经常点错位置。
+
+**修复**：移除 fallback，找不到就直接退出，不侥幸继续。
+
+**问题 2：截图被覆盖**
+退出前的截图会被下一次截图覆盖，导致无法排查。
+
+**修复**：失败时立即将截图备份为 `/tmp/menu_items_FAILED_YYYYMMDD_HHMMSS.png`，并打印 OCR 识别到的所有文字供调试。
+
+---
+
+### Q: 转发文章 Step 5/5 报"未找到发送按钮"导致整条消息失败？
+>A: 同样是 OCR 匹配脆弱 + 无截图备份的问题。
+
+代码第 670 行精确匹配 `"发送"`，按钮文字稍有变化就匹配失败，然后 `return False` 整条消息都没收到。
+
+**修复**：失败时截图备份为 `/tmp/send_button_FAILED_YYYYMMDD_HHMMSS.png`，不覆盖正常流程的截图。

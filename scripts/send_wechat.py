@@ -522,7 +522,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
     print("  [2/5] ✅ 已点击链接，等待文章页面加载...")
 
-    # Step 3: 点击右上角"..."按钮，在菜单中选"转发给朋友"
+    # Step 3: 点击右上角"..."按钮，在菜单中选"转发"
     print("  [3/5] 点击右上角菜单按钮...")
 
     # 先关闭通知中心
@@ -613,11 +613,17 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
                 break
 
     if not clicked:
-        print("  ⚠️ 未找到「转发给朋友」，尝试盲操作...")
-        pyautogui.press('down')
-        time.sleep(0.15)
-        pyautogui.press('return')
-        time.sleep(0.5)
+        import shutil
+        from datetime import datetime
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup = f"/tmp/menu_items_FAILED_{ts}.png"
+        shutil.copy("/tmp/menu_items.png", backup)
+        print(f"  [调试] 截图已备份: {backup}")
+        # 打印 OCR 结果供调试
+        if menu_ocr:
+            print(f"  [调试] OCR 识别到的文字: {[t for t in menu_ocr.txts if t.strip()]}")
+        print("  ❌ 未找到「转发」菜单项，退出")
+        return False
 
     time.sleep(0.5)
     print("  [3/5] ✅ 已打开转发浮窗")
@@ -667,7 +673,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
             bbox = send_ocr.boxes[i]
             prob = send_ocr.scores[i]
             # 精确匹配"发送"按钮（排除"发送给"窗口标题）
-            if text.strip() == "发送":
+            if "发送" in text.strip():
                 xs = [p[0] for p in bbox]
                 ys = [p[1] for p in bbox]
                 cx = int((min(xs) + max(xs)) // 2)
@@ -680,6 +686,12 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
 
     if not send_clicked:
         print("  [5/5] ⚠️ 未自动找到发送按钮，请手动点击")
+        import shutil
+        from datetime import datetime
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup = f"/tmp/send_button_FAILED_{ts}.png"
+        shutil.copy("/tmp/send_button.png", backup)
+        print(f"  [调试] 截图已备份: {backup}")
         return False
 
     print(f"✅ 转发成功！文章已以卡片形式发送给 {target_contact}")
