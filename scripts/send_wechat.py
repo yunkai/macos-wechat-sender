@@ -707,8 +707,9 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         for i, text in enumerate(send_ocr.txts):
             bbox = send_ocr.boxes[i]
             prob = send_ocr.scores[i]
-            # 精确匹配"发送"按钮（排除"发送给"窗口标题）
-            if "发送" in text.strip():
+            t = text.strip()
+            # 精确匹配"发送"按钮：完全等于"发送"或"发送 "（排除"发送给"、"发送至"等）
+            if t == "发送" or t == "发送 ":
                 xs = [p[0] for p in bbox]
                 ys = [p[1] for p in bbox]
                 cx = int((min(xs) + max(xs)) // 2)
@@ -718,6 +719,12 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
                     cx += int(popup_bounds["x"])
                     cy += int(popup_bounds["y"])
                 print(f"  找到发送按钮: ({cx}, {cy})")
+                # 点击前在截图上画蓝色圆圈标记（调试用）
+                import cv2
+                marker_img = cv2.imread("/tmp/send_button.png")
+                cv2.circle(marker_img, (cx, cy), 15, (255, 0, 0), 3)  # 蓝色圆圈
+                cv2.imwrite("/tmp/send_button_MARKER.png", marker_img)
+                print(f"  [调试] 已标记点击位置到 /tmp/send_button_MARKER.png")
                 pyautogui.click(cx, cy)
                 send_clicked = True
                 print("  [5/5] ✅ 已点击发送按钮")
