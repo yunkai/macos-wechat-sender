@@ -633,6 +633,22 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     time.sleep(0.5)
     print("  [3/5] ✅ 已打开转发浮窗")
 
+    # 检测并保存转发弹窗的窗口 bounds（Step 5 需要裁剪该区域来定位发送按钮）
+    popup_bounds = None
+    k_excl = 2; k_on_screen = 1
+    wl = Quartz.CGWindowListCopyWindowInfo(k_excl | k_on_screen, Quartz.kCGNullWindowID)
+    for win in wl:
+        owner = win.get("kCGWindowOwnerName", "")
+        if "微信" in owner or "WeChat" in owner:
+            b = win.get("kCGWindowBounds", {})
+            w = b.get("Width", 0); h = b.get("Height", 0)
+            # 弹窗比浏览器窗口小（浏览器是 1512x876），但比引用菜单大（引用菜单约 210x368）
+            # 典型转发弹窗约 500x400 到 700x500
+            if 300 < w < 1200 and 200 < h < 700 and w < 1400:
+                popup_bounds = {"x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h}
+                print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
+                break
+
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
     time.sleep(0.3)
@@ -669,8 +685,22 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     # 截图
     subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/send_button.png"])
 
-    # 用 RapidOCR 找"发送"按钮
-    send_ocr = RAPIDOCR_READER("/tmp/send_button.png")
+    # 如果有弹窗 bounds，先裁剪弹窗区域来识别（避免搜索框等干扰）
+    send_ocr = None
+    if popup_bounds:
+        img = Image.open("/tmp/send_button.png")
+        crop = img.crop((
+            int(popup_bounds["x"]), int(popup_bounds["y"]),
+            int(popup_bounds["x"] + popup_bounds["w"]), int(popup_bounds["y"] + popup_bounds["h"])
+        ))
+        crop.save("/tmp/send_button_crop.png")
+        send_ocr = RAPIDOCR_READER("/tmp/send_button_crop.png")
+        print(f"  [弹窗裁剪] {popup_bounds['w']:.0f}x{popup_bounds['h']:.0f} 区域识别")
+
+    # 如果裁剪区域没找到，回退到全屏识别
+    if not send_ocr or not send_ocr.txts:
+        send_ocr = RAPIDOCR_READER("/tmp/send_button.png")
+        print("  [全屏识别] 弹窗区域未找到，回退全屏")
 
     send_clicked = False
     if send_ocr:
@@ -683,6 +713,10 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
                 ys = [p[1] for p in bbox]
                 cx = int((min(xs) + max(xs)) // 2)
                 cy = int((min(ys) + max(ys)) // 2)
+                # 如果是裁剪区域识别出来的，需要加上弹窗偏移
+                if popup_bounds:
+                    cx += int(popup_bounds["x"])
+                    cy += int(popup_bounds["y"])
                 print(f"  找到发送按钮: ({cx}, {cy})")
                 pyautogui.click(cx, cy)
                 send_clicked = True
