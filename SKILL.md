@@ -1,10 +1,10 @@
 ---
 name: wechat-send-message
 description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，支持发送文本消息、文件、公众号文章卡片转发，以及转发后引用消息。触发场景：用户说"发送微信消息"、"给 XXX 发消息"、"给 XXX 发文件"、"微信自动发送"、"转发文章"、"给 XXX 发文章"、"转发文章并引用"、或需要通过 Python 代码控制微信发送消息或文件。
-version: 1.15.0
+version: 1.16.0
 ---
 
-# WeChat Send Message v1.15.0
+# WeChat Send Message v1.16.0
 
 在 Mac 上自动化发送微信消息的技能。
 
@@ -388,6 +388,23 @@ A: 这是 `wait_for_browser_window()` 函数的时机问题，**不是窗口名�
 4. 超时保持 **20 秒**
 
 已在 `send_wechat.py` 中修复。如遇此问题，确认 `send_wechat.py` 已更新到最新版本。
+
+### Q: 转发文章 Step 2 点击坐标错位（没有弹出内置浏览器窗口）？
+>A: 这是 `find_url_text_and_click()` 中 RapidOCR 误识别了聊天区域外的 URL。
+
+**问题根因**：peekaboo 全屏截图包含屏幕上**所有窗口**的文字（搜索框、输入法候选词、地址栏等），OCR 会把这些非聊天消息的 URL 也识别进来，取 y 最大的 URL 时错取了聊天区域外的链接。
+
+**已确认的事实**：
+- peekaboo 全屏截图坐标系 = CGWindowListCopyWindowInfo 坐标系 = RapidOCR 返回的坐标系（三者数值一致，无需手动转换）
+- 真正原因：URL 来自搜索框/输入法/侧边栏，不是聊天消息里的链接
+
+**修复**：在 `find_url_text_and_click()` 中加了聊天消息区域边界过滤：
+- scan_y_top = wy + 120（跳过标题栏+搜索栏）
+- scan_y_bottom = wy + wh - 100（跳过底部输入框）
+- OCR 识别后额外过滤掉中心点不在 `scan_y_top~scan_y_bottom` 范围内的 URL
+- 被过滤的 URL 会打印日志：`[过滤] URL不在聊天区域内，跳过: xxx`
+
+⚠️ 注意：OCR 找到 URL 不代表它是聊天消息里的链接，必须在消息区域内才算有效。
 
 ### Q: 转发文章 Step 3 找不到「转发」菜单项导致整条消息失败？
 >A: 这是 Step 3 的 OCR 匹配和 fallback 机制问题。
