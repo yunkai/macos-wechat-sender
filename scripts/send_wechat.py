@@ -258,11 +258,12 @@ def find_url_text_and_click(target_url=None):
     arr = np.array(img, dtype=np.int32)
     screen_h, screen_w = arr.shape[:2]
 
-    # 扫描区域
+    # 扫描区域：只取聊天消息区域，排除标题栏、搜索栏、侧边栏、底部输入框
+    # 标题栏~50 + 搜索栏~60 = 从顶部跳过 120px；底部输入框~100px
     scan_x1 = int(wx + ww * 0.25)
     scan_x2 = int(wx + ww - 10)
-    scan_y_bottom = int(wy + wh - 30)   # 从底部开始
-    scan_y_top = int(wy + 50)             # 到顶部为止
+    scan_y_top = int(wy + 120)                    # 跳过标题栏+搜索栏
+    scan_y_bottom = int(wy + wh - 100)            # 跳过底部输入框
 
     # 使用 RapidOCR 识别截图中的 URL 文字区域
     ocr_result = RAPIDOCR_READER("/tmp/wechat_bubble.png")
@@ -280,6 +281,10 @@ def find_url_text_and_click(target_url=None):
                 ys = [p[1] for p in bbox]
                 cx = int((min(xs) + max(xs)) // 2)
                 cy = int((min(ys) + max(ys)) // 2)
+                # 过滤掉聊天区域外的 URL（避免点击到搜索框、输入法候选、侧边栏等）
+                if not (scan_x1 <= cx <= scan_x2 and scan_y_top <= cy <= scan_y_bottom):
+                    print(f"  [过滤] URL不在聊天区域内，跳过: {text[:50]} ({cx},{cy})")
+                    continue
                 url_results.append((cx, cy, text, prob))
 
     if not url_results:
