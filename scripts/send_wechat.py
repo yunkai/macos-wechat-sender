@@ -901,6 +901,21 @@ def find_card_center():
         gray_upper = np.array([210, 210, 210])
         gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
         if cv2.countNonZero(gray_mask) > 50:
+            # 验证：分割线上方和下方附近必须各有文字（卡片才有上下文字，窗口边沿则没有）
+            has_text_nearby = False
+            for bi, bt in enumerate(txts):
+                if not bt or len(bt.strip()) < 2:
+                    continue
+                bbox = boxes[bi]
+                ys = [p[1] for p in bbox]
+                ty_min, ty_max = min(ys), max(ys)
+                # 文字区域与分割线附近（上下各50px）有重叠
+                if (ty_max >= scan_y - 50 and ty_min <= scan_y + 50):
+                    has_text_nearby = True
+                    break
+            if not has_text_nearby:
+                print(f"  [卡片检测] y={scan_y} 有线条但附近无文字，跳过（窗口边沿？）")
+                continue
             card_cy = scan_y
             print(f"  [卡片检测] 找到分割线在 y={scan_y} (灰色)")
             break
@@ -909,6 +924,20 @@ def find_card_center():
         bg_brightness = np.mean(scan_region)
         light_mask = scan_region > (bg_brightness + 30)
         if np.sum(light_mask) > 50:
+            # 验证：分割线上方和下方附近必须各有文字
+            has_text_nearby = False
+            for bi, bt in enumerate(txts):
+                if not bt or len(bt.strip()) < 2:
+                    continue
+                bbox = boxes[bi]
+                ys = [p[1] for p in bbox]
+                ty_min, ty_max = min(ys), max(ys)
+                if (ty_max >= scan_y - 50 and ty_min <= scan_y + 50):
+                    has_text_nearby = True
+                    break
+            if not has_text_nearby:
+                print(f"  [卡片检测] y={scan_y} 有线条但附近无文字，跳过（窗口边沿？）")
+                continue
             card_cy = scan_y
             print(f"  [卡片检测] 找到分割线在 y={scan_y} (浅色)")
             break
