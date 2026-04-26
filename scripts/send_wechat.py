@@ -873,8 +873,8 @@ def find_card_center(known_title=None):
         # 在文字下方检测分割线（30~120px 范围内）
         # 要求：
         #   1. 存在一条直线（灰色/浅色，横向连续像素 > 50）
-        #   2. 线宽 < 窗口宽度的 50%（排除全屏输入框分隔线）
-        #   3. 分割线上方紧邻的区域是卡片背景色（验证是卡片底边，非其他UI分隔线）
+        #   2. 线宽在 40 ~ 窗口宽度50%（排除极小UI元素和全屏输入框分隔线）
+        #   3. 分割线上方紧邻的区域是卡片背景色（验证是卡片底边）
         found_line = False
         line_y = None
         line_width = 0
@@ -903,6 +903,10 @@ def find_card_center(known_title=None):
                 # 全屏分割线跳过
                 if measured_width > w * 0.5:
                     print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px > 50%窗口，跳过")
+                    continue
+                # 太短的分割线（<40px）跳过（可能是UI装饰元素）
+                if measured_width < 40:
+                    print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px < 40px，跳过（非卡片分隔线）")
                     continue
                 # 验证：分割线上方的像素颜色 = 卡片背景色（白色/亮色）
                 # 采样线上面 5px 处，与文字背景对比
@@ -941,6 +945,10 @@ def find_card_center(known_title=None):
                     if measured_width > w * 0.5:
                         print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px > 50%窗口，跳过")
                         continue
+                    # 太短的分割线跳过
+                    if measured_width < 40:
+                        print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px < 40px，跳过（非卡片分隔线）")
+                        continue
                     # 验证：分割线上方必须是深色（卡片背景色）
                     above_line = img[scan_y-5:scan_y, max(0, cx-80):min(w, cx+80)]
                     if above_line.size > 0:
@@ -957,7 +965,7 @@ def find_card_center(known_title=None):
         if found_line:
             article_candidates.append((cx, cy, text, text_height, line_y, line_width))
 
-    # Step 2: 分割线检测法（主力方法）
+    # Step 2: 分割线检测法
     # 原理：文字下方有分割线 → 这是卡片
     # 卡片中心在文字位置（cy），分割线只是验证卡片存在的标志
 
