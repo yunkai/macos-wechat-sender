@@ -983,9 +983,10 @@ def find_card_center(known_title=None):
     cx, cy, line_y = best[0], best[1], best[4]
     print(f"  [卡片检测] 选中底部: ({cx}, {cy}) '{best[2][:20]}' 分割线 y={line_y}")
 
-    # 卡片中心在文字位置（cy），卡片内容在分割线上方
-    # 右击卡片需要点击卡片内容区域，而非分割线下方
-    card_cy = cy
+    # 卡片中心在文字位置上方约 30px（标题区域）
+    # OCR 能检测到的是卡片底部的来源名（如「正法文集」），
+    # 真正的标题在来源名上方，偏移太小则点击来源名，偏移太大则脱离卡片
+    card_cy = max(cy - 30, 80)
 
     # 转换到屏幕坐标
     screen_cx = int(wx) + cx
