@@ -744,12 +744,15 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     return True
 
 
-def find_card_center():
+def find_card_center(known_title=None):
     """
     通过 OCR 识别文章标题文字，找到聊天窗口中最新的卡片式链接中心坐标
 
-    原理：微信卡片有白色背景，通过 OCR 定位标题文字位置，
-          结合位置（右侧=我的卡片）和 Y 坐标（越大越新）来筛选
+    原理：微信卡片有白色/深色背景，下方有一条分隔线（仅卡片宽度，非全屏）。
+          通过检测文字下方是否有分隔线来确认卡片位置。
+
+    Args:
+        known_title: 可选的已知文章标题，精确匹配卡片位置
 
     Returns:
         tuple: (x, y) 卡片中心屏幕坐标，失败返回 None
@@ -757,7 +760,7 @@ def find_card_center():
     import cv2
     import numpy as np
 
-    # 获取微信窗口坐标（用于转换 OCR 坐标到屏幕坐标）
+    # 获取微信窗口坐标
     kExcludeDesktopElements = 2
     kOnScreenOnly = 1
     window_list = Quartz.CGWindowListCopyWindowInfo(
@@ -768,21 +771,20 @@ def find_card_center():
         owner = win.get("kCGWindowOwnerName", "")
         name = win.get("kCGWindowName", "")
         if "微信" in owner or "WeChat" in owner:
-            if "窗口" not in name:  # 跳过内置浏览器
+            if "窗口" not in name:
                 b = win.get("kCGWindowBounds", {})
                 wx, wy = b.get("X", 0), b.get("Y", 0)
                 ww, wh = b.get("Width", 0), b.get("Height", 0)
                 print(f"  [卡片检测] 窗口(pts): ({wx}, {wy}) {ww}x{wh}")
                 break
 
-    # 用 peekaboo 截取当前激活窗口（只截微信窗口）
+    # 截取微信窗口截图
     subprocess.run(
         ["peekaboo", "image", "--app", "WeChat", "--mode", "frontmost", "--path", "/tmp/wechat_window.png"],
         capture_output=True
     )
     time.sleep(0.3)
 
-    # 读取截图
     img = cv2.imread("/tmp/wechat_window.png")
     if img is None:
         print("  [卡片检测] 无法读取截图")
@@ -791,9 +793,7 @@ def find_card_center():
     h, w = img.shape[:2]
     print(f"  [卡片检测] 截图: {w}x{h}")
 
-    # 使用 RapidOCR 找文章标题
     result = RAPIDOCR_READER("/tmp/wechat_window.png")
-
     if not result or not result.txts:
         print("  [卡片检测] OCR 未找到文字")
         return None
@@ -801,10 +801,28 @@ def find_card_center():
     boxes = result.boxes
     txts = result.txts
 
-    # 简化检测：找所有白色背景的文字，在其下方检测是否有灰色直线
+    # Step 1: 如果有已知标题，优先精确匹配
+    if known_title:
+        for i, text in enumerate(txts):
+            if known_title in text:
+                bbox = boxes[i]
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                cx = int((min(xs) + max(xs)) // 2)
+                cy = int((max(ys) + min(ys)) // 2)
+                print(f"  [卡片检测] 精确匹配到标题「{known_title}」在 ({cx},{cy})")
+                card_cy = cy + 40
+                screen_cx = int(wx) + cx
+                screen_cy = int(wy) + card_cy
+                print(f"  [卡片检测] 卡片中心(屏幕): ({screen_cx}, {screen_cy})")
+                return (screen_cx, screen_cy)
+
+    # Step 2: 分割线检测法（主力方法）
+    # 原理：卡片文字下方有一条分割线，其宽度有限（仅卡片宽度），
+    #        而输入框顶部分隔线横跨全窗口。通过测量线宽来区分。
     article_candidates = []
     for i, text in enumerate(txts):
-        if not text or len(text.strip()) == 0:
+        if not text or len(text.strip()) < 4:
             continue
 
         bbox = boxes[i]
@@ -815,144 +833,155 @@ def find_card_center():
         cx = (x1 + x2) // 2
         cy = (y1 + y2) // 2
 
-        # 检查文字周围的背景颜色（扩展区域）
-        expand = 30
-        x1_e = max(0, x1 - expand)
-        y1_e = max(0, y1 - expand)
-        x2_e = min(w, x2 + expand)
-        y2_e = min(h, y2 + expand)
-        roi = img[y1_e:y2_e, x1_e:x2_e]
+        # 聊天区域右侧 = 我的消息
+        if cx < int(w * 0.55):
+            continue
 
-        # 计算背景平均颜色
-        avg_color = np.mean(roi, axis=(0, 1))  # BGR
+        # 排除顶部标题栏/搜索栏区域 (< 80px)
+        if cy < 80:
+            continue
 
-        # 白色背景: 所有通道都很高 (R,G,B > 220)
-        is_white_bg = all(c > 180 for c in avg_color)
-        is_dark_bg = all(c < 100 for c in avg_color)
+        # 排除底部输入框区域 (> 窗口高度 - 100)
+        if cy > h - 120:
+            continue
 
+        # 采样文字背景（取四角）
+        corners = [
+            img[max(0, y1-15):min(h, y1+5), max(0, x1-15):min(w, x1+5)],
+            img[max(0, y1-15):min(h, y1+5), max(0, x2-5):min(w, x2+15)],
+            img[max(0, y2-5):min(h, y2+15), max(0, x1-15):min(w, x1+5)],
+            img[max(0, y2-5):min(h, y2+15), max(0, x2-5):min(w, x2+15)],
+        ]
+        corner_colors = []
+        for corner in corners:
+            if corner.size > 0:
+                corner_colors.append(np.mean(corner, axis=(0, 1)))
+        if not corner_colors:
+            continue
+        avg_bg = np.mean(corner_colors, axis=0)
+
+        is_white_bg = all(c > 180 for c in avg_bg)
+        is_dark_bg = all(c < 120 for c in avg_bg)  # 放宽到120，夜间卡片可能偏灰
         if not is_white_bg and not is_dark_bg:
             continue
 
-        # 检查文字下方是否有分割线
-        # 白天模式：找灰色直线（比白色背景暗）
-        # 夜间模式：找浅色直线（比深色背景亮）
-        gray_lower = np.array([150, 150, 150])
-        gray_upper = np.array([210, 210, 210])
-        has_line = False
+        # 文字高度过滤（卡片标题通常 14-30px）
+        text_height = y2 - y1
+        if text_height < 10 or text_height > 40:
+            continue
+
+        # 在文字下方检测分割线（30~120px 范围内）
+        # 要求：
+        #   1. 存在一条直线（灰色/浅色，横向连续像素 > 50）
+        #   2. 线宽 < 窗口宽度的 50%（排除全屏输入框分隔线）
+        #   3. 分割线上方紧邻的区域是卡片背景色（验证是卡片底边，非其他UI分隔线）
+        found_line = False
         line_y = None
+        line_width = 0
 
-        for offset in range(30, 100, 5):
+        for offset in range(30, 120, 5):
             scan_y = cy + offset
-            if scan_y >= h:
+            if scan_y >= h - 20:
                 break
-            scan_x_start = max(0, cx - 200)
-            scan_x_end = min(w, cx + 200)
-            scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
 
-            # 检查是否有灰色直线（白天模式）
-            gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
+            # 扫描范围宽一些，以便测量线宽
+            scan_x_start = max(0, cx - 250)
+            scan_x_end = min(w, cx + 250)
+            scan_region = img[scan_y:scan_y+3, scan_x_start:scan_x_end]
+
+            # --- 白天模式：灰色直线 ---
+            gray_mask = cv2.inRange(scan_region, np.array([150,150,150]), np.array([210,210,210]))
             if cv2.countNonZero(gray_mask) > 50:
-                has_line = True
+                # 测量线宽
+                gray_binary = cv2.inRange(scan_region, np.array([150,150,150]), np.array([220,220,220]))
+                line_pixels = np.sum(gray_binary > 0, axis=0)
+                non_zero = np.where(line_pixels > 0)[0]
+                if len(non_zero) > 0:
+                    measured_width = non_zero[-1] - non_zero[0]
+                else:
+                    measured_width = scan_x_end - scan_x_start
+                # 全屏分割线跳过
+                if measured_width > w * 0.5:
+                    print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px > 50%窗口，跳过")
+                    continue
+                # 验证：分割线上方的像素颜色 = 卡片背景色（白色/亮色）
+                # 采样线上面 5px 处，与文字背景对比
+                above_line = img[scan_y-5:scan_y, max(0, cx-80):min(w, cx+80)]
+                if above_line.size > 0:
+                    above_color = np.mean(above_line, axis=(0, 1))
+                    # 如果是白天模式（is_white_bg），上面应该是白色（>180）
+                    # 如果是夜间模式（is_dark_bg），上面应该是深色（<100）
+                    if is_white_bg:
+                        if not all(c > 170 for c in above_color):
+                            print(f"  [卡片检测] y={scan_y} 线上方颜色{above_color.astype(int)} 非卡片白色，跳过")
+                            continue
+                    elif is_dark_bg:
+                        if not all(c < 130 for c in above_color):
+                            print(f"  [卡片检测] y={scan_y} 线上方颜色{above_color.astype(int)} 非卡片深色，跳过")
+                            continue
+                found_line = True
                 line_y = scan_y
+                line_width = measured_width
                 break
 
-            # 检查是否有浅色直线（夜间模式，比背景亮）
+            # --- 夜间模式：浅色直线（比深色背景亮） ---
             if is_dark_bg:
                 bg_brightness = np.mean(scan_region)
-                light_mask = scan_region > (bg_brightness + 30)
+                light_mask = scan_region > (bg_brightness + 15)
                 if np.sum(light_mask) > 50:
-                    has_line = True
+                    # 测量线宽
+                    light_binary = (scan_region > (bg_brightness + 15)).astype(np.uint8)
+                    line_pixels = np.sum(light_binary > 0, axis=0)
+                    non_zero = np.where(line_pixels > 0)[0]
+                    if len(non_zero) > 0:
+                        measured_width = non_zero[-1] - non_zero[0]
+                    else:
+                        measured_width = scan_x_end - scan_x_start
+                    # 全屏分割线跳过
+                    if measured_width > w * 0.5:
+                        print(f"  [卡片检测] y={scan_y} 线宽 {measured_width}px > 50%窗口，跳过")
+                        continue
+                    # 验证：分割线上方必须是深色（卡片背景色）
+                    above_line = img[scan_y-5:scan_y, max(0, cx-80):min(w, cx+80)]
+                    if above_line.size > 0:
+                        above_color = np.mean(above_line, axis=(0, 1))
+                        # 卡片上方应该是深色背景
+                        if not all(c < 130 for c in above_color):
+                            print(f"  [卡片检测] y={scan_y} 线上方颜色{above_color.astype(int)} 非卡片深色，跳过（可能是聊天区域分隔线）")
+                            continue
+                    found_line = True
                     line_y = scan_y
+                    line_width = measured_width
                     break
 
-        if has_line:
-            article_candidates.append((cx, cy, x1, y1, x2, y2, text))
+        if found_line:
+            article_candidates.append((cx, cy, text, text_height, line_y, line_width))
+
+    # Step 2: 分割线检测法（主力方法）
+    # 原理：文字下方有分割线 → 这是卡片
+    # 卡片中心在文字位置（cy），分割线只是验证卡片存在的标志
+
+    print(f"  [卡片检测] 分割线检测找到 {len(article_candidates)} 个候选")
+    for c in article_candidates:
+        print(f"    ({c[0]},{c[1]}) '{c[2][:20]}' h={c[3]} line_y={c[4]} w={c[5]})")
 
     if not article_candidates:
-        print("  [卡片检测] 未找到卡片（文字+灰色直线）")
+        print("  [卡片检测] 未找到卡片")
         return None
 
-    # 过滤：只保留右侧聊天区域的候选（聊天区域在窗口右侧，约 x > 窗口宽度 * 0.6）
-    chat_start_x = int(w * 0.6)
-    right_candidates = [c for c in article_candidates if c[0] > chat_start_x]
-    candidates_to_use = right_candidates if right_candidates else article_candidates
-    print(f"  [卡片过滤] 右侧候选: {len(right_candidates)}/{len(article_candidates)} 个")
+    # 按 Y 坐标排序，取最新的（最大的 y = 最底部）
+    article_candidates.sort(key=lambda c: c[1], reverse=True)
+    best = article_candidates[0]
+    cx, cy, line_y = best[0], best[1], best[4]
+    print(f"  [卡片检测] 选中底部: ({cx}, {cy}) '{best[2][:20]}' 分割线 y={line_y}")
 
-    # 按 Y 坐标排序（Y 越大越靠下 = 最下面的卡片）
-    candidates_to_use.sort(key=lambda c: c[1], reverse=True)
-    best = candidates_to_use[0]
-    cx, cy = best[0], best[1]
-    print(f"  [卡片过滤] 选中最下面: ({cx}, {cy})")
+    # 卡片中心在文字位置（cy），卡片内容在分割线上方
+    # 右击卡片需要点击卡片内容区域，而非分割线下方
+    card_cy = cy
 
-    # 卡片中心：在标题下方查找分割线的位置
-    # 白天：找灰色直线；夜间：找浅色直线
-    card_cy = cy + 50
-
-    for offset in range(30, 100, 5):
-        scan_y = cy + offset
-        if scan_y >= h:
-            break
-        scan_x_start = max(0, cx - 200)
-        scan_x_end = min(w, cx + 200)
-        scan_region = img[scan_y:scan_y+5, scan_x_start:scan_x_end]
-
-        # 检查是否有灰色直线（白天模式）
-        gray_lower = np.array([150, 150, 150])
-        gray_upper = np.array([210, 210, 210])
-        gray_mask = cv2.inRange(scan_region, gray_lower, gray_upper)
-        if cv2.countNonZero(gray_mask) > 50:
-            # 验证：分割线上方和下方附近必须各有文字（卡片才有上下文字，窗口边沿则没有）
-            has_text_nearby = False
-            for bi, bt in enumerate(txts):
-                if not bt or len(bt.strip()) < 2:
-                    continue
-                bbox = boxes[bi]
-                ys = [p[1] for p in bbox]
-                ty_min, ty_max = min(ys), max(ys)
-                # 文字区域与分割线附近（上下各50px）有重叠
-                if (ty_max >= scan_y - 50 and ty_min <= scan_y + 50):
-                    has_text_nearby = True
-                    break
-            if not has_text_nearby:
-                print(f"  [卡片检测] y={scan_y} 有线条但附近无文字，跳过（窗口边沿？）")
-                continue
-            card_cy = scan_y
-            print(f"  [卡片检测] 找到分割线在 y={scan_y} (灰色)")
-            break
-
-        # 检查是否有浅色直线（夜间模式，比背景亮）
-        bg_brightness = np.mean(scan_region)
-        light_mask = scan_region > (bg_brightness + 30)
-        if np.sum(light_mask) > 50:
-            # 验证：分割线上方和下方附近必须各有文字
-            has_text_nearby = False
-            for bi, bt in enumerate(txts):
-                if not bt or len(bt.strip()) < 2:
-                    continue
-                bbox = boxes[bi]
-                ys = [p[1] for p in bbox]
-                ty_min, ty_max = min(ys), max(ys)
-                if (ty_max >= scan_y - 50 and ty_min <= scan_y + 50):
-                    has_text_nearby = True
-                    break
-            if not has_text_nearby:
-                print(f"  [卡片检测] y={scan_y} 有线条但附近无文字，跳过（窗口边沿？）")
-                continue
-            card_cy = scan_y
-            print(f"  [卡片检测] 找到分割线在 y={scan_y} (浅色)")
-            break
-
-    print(f"  [卡片检测] 找到 {len(article_candidates)} 个候选，选中底部: ({cx}, {card_cy})")
-    # peekaboo frontmost 截取的坐标直接是屏幕坐标
-    # CGWindowListCopyWindowInfo 返回的是屏幕坐标（可能是 pixels 或 points）
-    # screencapture -R 也使用相同单位
-    # OCR 坐标在截图内，直接加上窗口偏移即可
-    window_pixel_x = int(wx)
-    window_pixel_y = int(wy)
-
-    # OCR 坐标是截图内像素，加上窗口像素偏移转屏幕像素
-    screen_cx = window_pixel_x + cx
-    screen_cy = window_pixel_y + card_cy
+    # 转换到屏幕坐标
+    screen_cx = int(wx) + cx
+    screen_cy = int(wy) + card_cy
     print(f"  [卡片检测] 卡片中心(屏幕): ({screen_cx}, {screen_cy})")
     return (screen_cx, screen_cy)
 
@@ -966,7 +995,7 @@ def wait_for_confirm(step_msg, sleep_sec=1.0):
         print(f"\n[跳过确认] {step_msg} (非交互模式)")
 
 
-def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=False):
+def forward_article_with_quote(article_url, target_contact, quote_message, via_contact="文件传输助手", debug=False, article_title=None):
     """
     转发公众号文章卡片并引用该卡片发送文本消息
 
@@ -999,7 +1028,7 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
 
     # Step 3: 定位卡片
     print("[步骤 3/4] 在目标窗口中定位卡片...")
-    card_pos = find_card_center()
+    card_pos = find_card_center(known_title=article_title)
     if card_pos is None:
         print("  ⚠️ 未找到卡片，退出")
         return False
@@ -1079,25 +1108,80 @@ def forward_article_with_quote(article_url, target_contact, quote_message, via_c
         kExcludeDesktopElements | kOnScreenOnly, Quartz.kCGNullWindowID
     )
     popup_win = None
+
+    # 先按尺寸过滤：找宽<600且高<600的微信子窗口（白天约210x310，夜间可能更宽）
+    candidate_wins = []
     for win in window_list:
         owner = win.get("kCGWindowOwnerName", "")
         if "微信" in owner or "WeChat" in owner:
             b = win.get("kCGWindowBounds", {})
-            # 弹出菜单窗口比主窗口小得多（通常宽<400，高<500）
             w = b.get("Width", 0)
             h = b.get("Height", 0)
-            if w > 0 and h > 0 and w < 400 and h < 500:
-                popup_win = {
+            if 50 < w < 600 and 50 < h < 600:
+                candidate_wins.append({
                     "x": b.get("X", 0),
                     "y": b.get("Y", 0),
                     "w": w,
                     "h": h,
-                }
-                print(f"  [菜单窗口] 位置({popup_win['x']:.0f},{popup_win['y']:.0f}) 大小{popup_win['w']:.0f}x{popup_win['h']:.0f}")
-                break
+                })
+
+    if candidate_wins:
+        # 按面积从小到大排序，取最小的（右键菜单通常比主窗口小得多）
+        candidate_wins.sort(key=lambda w: w["w"] * w["h"])
+        popup_win = candidate_wins[0]
+        print(f"  [菜单窗口] 位置({popup_win['x']:.0f},{popup_win['y']:.0f}) 大小{popup_win['w']:.0f}x{popup_win['h']:.0f}")
+
+    # fallback：如果窗口检测没找到，直接在全屏截图里搜索右键点击位置附近的"引用"
+    if popup_win is None:
+        print("  [菜单窗口] CGWindow未找到菜单弹窗，尝试 OCR fallback...")
+        subprocess.run(["peekaboo", "image", "--mode", "screen", "--path", "/tmp/quote_menu.png"])
+        menu_ocr = RAPIDOCR_READER("/tmp/quote_menu.png")
+        if menu_ocr:
+            for i, text in enumerate(menu_ocr.txts):
+                t = text.strip()
+                if "引用" in t or t in ["引用", "引用 "]:
+                    bbox = menu_ocr.boxes[i]
+                    xs = [p[0] for p in bbox]
+                    ys = [p[1] for p in bbox]
+                    cx = int((min(xs) + max(xs)) // 2)
+                    cy = int((min(ys) + max(ys)) // 2)
+                    print(f"  [Fallback] 找到「{text}」at ({cx},{cy})")
+                    # 限制菜单区域：只取点击位置附近的"引用"（排除聊天区域的"引用"）
+                    if abs(cx - click_x) < 500 and abs(cy - click_y) < 500:
+                        popup_win = {
+                            "x": max(0, cx - 200),
+                            "y": max(0, cy - 100),
+                            "w": 400,
+                            "h": 300,
+                        }
+                        # 记录原坐标（后续直接点击，不裁剪）
+                        print(f"  [Fallback] 构建虚拟弹窗区域，直接点击 ({cx},{cy})")
+                        e_down = Quartz.CGEventCreateMouseEvent(
+                            None, Quartz.kCGEventLeftMouseDown, (cx, cy), Quartz.kCGMouseButtonLeft
+                        )
+                        e_up = Quartz.CGEventCreateMouseEvent(
+                            None, Quartz.kCGEventLeftMouseUp, (cx, cy), Quartz.kCGMouseButtonLeft
+                        )
+                        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_down)
+                        time.sleep(0.05)
+                        Quartz.CGEventPost(Quartz.kCGHIDEventTap, e_up)
+                        print("  ✅ 已通过 fallback 点击「引用」")
+                        time.sleep(0.3)
+                        print("  ✅ 已进入引用输入模式\n")
+                        # 粘贴并发送引用消息
+                        pyperclip.copy(quote_message)
+                        time.sleep(0.1)
+                        pyautogui.keyDown('command')
+                        pyautogui.press('v')
+                        pyautogui.keyUp('command')
+                        time.sleep(0.1)
+                        pyautogui.press('return')
+                        time.sleep(0.2)
+                        print(f"✅ 引用消息已发送: \"{quote_message[:30]}...\" -> {target_contact}")
+                        return True
 
     if popup_win is None:
-        raise RuntimeError("[步骤 4/4] 未找到菜单弹出窗口，请检查右键是否成功弹出菜单")
+        raise RuntimeError("[步骤 4/4] 未找到菜单弹出窗口，也无法通过 OCR 找到「引用」，请检查右键是否成功弹出菜单")
 
     # 只截取菜单弹出窗口（避免全屏其他"引用"字样干扰）
     # peekaboo 的 --window-id 需要数值ID，用 --app WeChat --mode frontmost 截主窗口
