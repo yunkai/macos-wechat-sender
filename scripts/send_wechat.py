@@ -637,6 +637,7 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     popup_bounds = None
     k_excl = 2; k_on_screen = 1
     wl = Quartz.CGWindowListCopyWindowInfo(k_excl | k_on_screen, Quartz.kCGNullWindowID)
+    candidates = []
     for win in wl:
         owner = win.get("kCGWindowOwnerName", "")
         if "微信" in owner or "WeChat" in owner:
@@ -645,9 +646,22 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
             # 弹窗比浏览器窗口小（浏览器是 1512x876），但比引用菜单大（引用菜单约 210x368）
             # 典型转发弹窗约 500x400 到 700x500
             if 300 < w < 1200 and 200 < h < 700 and w < 1400:
-                popup_bounds = {"x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h}
-                print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
-                break
+                name = win.get("kCGWindowName", "")
+                candidates.append({
+                    "x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h,
+                    "name": name,
+                    "is_main": name == "微信"
+                })
+    # 优先选弹窗（名称不是"微信"），排除被误识别的主窗口
+    for c in candidates:
+        if not c["is_main"]:
+            popup_bounds = {"x": c["x"], "y": c["y"], "w": c["w"], "h": c["h"]}
+            break
+    # 如果没有弹窗窗口，回退到全屏（不选主窗口，避免裁剪错区域）
+    if popup_bounds:
+        print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
+    else:
+        print("  [弹窗] 未检测到独立弹窗窗口，Step 5 将使用全屏截图")
 
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
@@ -702,33 +716,40 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
         send_ocr = RAPIDOCR_READER("/tmp/send_button.png")
         print("  [全屏识别] 弹窗区域未找到，回退全屏")
 
-    send_clicked = False
-    if send_ocr:
-        for i, text in enumerate(send_ocr.txts):
-            bbox = send_ocr.boxes[i]
-            prob = send_ocr.scores[i]
+    # 在 OCR 结果中查找"发送"按钮，返回 (cx, cy) 或 None
+    def _find_send_in_ocr(ocr_result, ox=0, oy=0):
+        if not ocr_result or not ocr_result.txts:
+            return None
+        for i, text in enumerate(ocr_result.txts):
             t = text.strip()
-            # 精确匹配"发送"按钮：完全等于"发送"或"发送 "（排除"发送给"、"发送至"等）
             if t == "发送" or t == "发送 ":
+                bbox = ocr_result.boxes[i]
                 xs = [p[0] for p in bbox]
                 ys = [p[1] for p in bbox]
-                cx = int((min(xs) + max(xs)) // 2)
-                cy = int((min(ys) + max(ys)) // 2)
-                # 如果是裁剪区域识别出来的，需要加上弹窗偏移
-                if popup_bounds:
-                    cx += int(popup_bounds["x"])
-                    cy += int(popup_bounds["y"])
-                print(f"  找到发送按钮: ({cx}, {cy})")
-                # 点击前在截图上画蓝色圆圈标记（调试用）
-                import cv2
-                marker_img = cv2.imread("/tmp/send_button.png")
-                cv2.circle(marker_img, (cx, cy), 15, (255, 0, 0), 3)  # 蓝色圆圈
-                cv2.imwrite("/tmp/send_button_MARKER.png", marker_img)
-                print(f"  [调试] 已标记点击位置到 /tmp/send_button_MARKER.png")
-                pyautogui.click(cx, cy)
-                send_clicked = True
-                print("  [5/5] ✅ 已点击发送按钮")
-                break
+                return (int((min(xs) + max(xs)) // 2) + ox,
+                        int((min(ys) + max(ys)) // 2) + oy)
+        return None
+
+    # 先在裁剪区域中查找
+    click_pos = None
+    send_clicked = False
+    if popup_bounds and send_ocr:
+        click_pos = _find_send_in_ocr(send_ocr,
+                                      int(popup_bounds["x"]),
+                                      int(popup_bounds["y"]))
+
+    if click_pos:
+        cx, cy = click_pos
+        print(f"  找到发送按钮: ({cx}, {cy})")
+        # 点击前在截图上画蓝色圆圈标记（调试用）
+        import cv2
+        marker_img = cv2.imread("/tmp/send_button.png")
+        cv2.circle(marker_img, (cx, cy), 15, (255, 0, 0), 3)  # 蓝色圆圈
+        cv2.imwrite("/tmp/send_button_MARKER.png", marker_img)
+        print(f"  [调试] 已标记点击位置到 /tmp/send_button_MARKER.png")
+        pyautogui.click(cx, cy)
+        send_clicked = True
+        print("  [5/5] ✅ 已点击发送按钮")
 
     if not send_clicked:
         print("  [5/5] ⚠️ 未自动找到发送按钮，请手动点击")
