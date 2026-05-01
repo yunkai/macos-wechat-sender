@@ -637,31 +637,25 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     popup_bounds = None
     k_excl = 2; k_on_screen = 1
     wl = Quartz.CGWindowListCopyWindowInfo(k_excl | k_on_screen, Quartz.kCGNullWindowID)
-    candidates = []
     for win in wl:
         owner = win.get("kCGWindowOwnerName", "")
         if "微信" in owner or "WeChat" in owner:
+            name = win.get("kCGWindowName", "")
+            # 按名称区分三种窗口：
+            #   "微信"        → 主聊天窗口 → 跳过
+            #   "微信 (窗口)"  → 内置浏览器   → 跳过
+            #   "" (空)       → 转发弹窗     → 选中
+            if name == "微信" or "窗口" in name:
+                continue
             b = win.get("kCGWindowBounds", {})
             w = b.get("Width", 0); h = b.get("Height", 0)
-            # 弹窗比浏览器窗口小（浏览器是 1512x876），但比引用菜单大（引用菜单约 210x368）
-            # 典型转发弹窗约 500x400 到 700x500
-            if 300 < w < 1200 and 200 < h < 700 and w < 1400:
-                name = win.get("kCGWindowName", "")
-                candidates.append({
-                    "x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h,
-                    "name": name,
-                    "is_main": name == "微信"
-                })
-    # 优先选弹窗（名称不是"微信"），排除被误识别的主窗口
-    for c in candidates:
-        if not c["is_main"]:
-            popup_bounds = {"x": c["x"], "y": c["y"], "w": c["w"], "h": c["h"]}
-            break
-    # 如果没有弹窗窗口，回退到全屏（不选主窗口，避免裁剪错区域）
-    if popup_bounds:
-        print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
-    else:
-        print("  [弹窗] 未检测到独立弹窗窗口，Step 5 将使用全屏截图")
+            # 最小尺寸保护：排除引用菜单等极小窗口（约 210×310）
+            if w > 200 and h > 200:
+                popup_bounds = {"x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h}
+                print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
+                break
+    if not popup_bounds:
+        print("  [弹窗] 未检测到弹窗窗口，Step 5 将使用全屏截图")
 
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
