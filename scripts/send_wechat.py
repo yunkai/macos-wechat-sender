@@ -259,11 +259,11 @@ def find_url_text_and_click(target_url=None):
     screen_h, screen_w = arr.shape[:2]
 
     # 扫描区域：只取聊天消息区域，排除标题栏、搜索栏、侧边栏、底部输入框
-    # 标题栏~50 + 搜索栏~60 = 从顶部跳过 120px；底部输入框~100px
-    scan_x1 = int(wx + ww * 0.25)
-    scan_x2 = int(wx + ww - 10)
-    scan_y_top = int(wy + 120)                    # 跳过标题栏+搜索栏
-    scan_y_bottom = int(wy + wh - 100)            # 跳过底部输入框
+    # 标题栏~50 + 搜索栏~60 = 从顶部跳过 120px；底部输入框~40px；左侧边栏~60px
+    scan_x1 = int(wx + 60)                       # 只排除侧边栏（约60px）
+    scan_x2 = int(wx + ww - 10)                  # 右边界留10px
+    scan_y_top = int(wy + 120)                   # 跳过标题栏+搜索栏
+    scan_y_bottom = int(wy + wh - 40)            # 跳过底部输入框（仅40px，避免漏掉底部链接）
 
     # 使用 RapidOCR 识别截图中的 URL 文字区域
     ocr_result = RAPIDOCR_READER("/tmp/wechat_bubble.png")
@@ -634,28 +634,34 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
     print("  [3/5] ✅ 已打开转发浮窗")
 
     # 检测并保存转发弹窗的窗口 bounds（Step 5 需要裁剪该区域来定位发送按钮）
+    # macOS CGWindowListCopyWindowInfo 查询的是窗口服务器快照，存在异步延迟。
+    # 高负载/刚唤醒时弹窗可能尚未注册 → 多次重试轮询。
     popup_bounds = None
     k_excl = 2; k_on_screen = 1
-    wl = Quartz.CGWindowListCopyWindowInfo(k_excl | k_on_screen, Quartz.kCGNullWindowID)
-    for win in wl:
-        owner = win.get("kCGWindowOwnerName", "")
-        if "微信" in owner or "WeChat" in owner:
-            name = win.get("kCGWindowName", "")
-            # 按名称区分三种窗口：
-            #   "微信"        → 主聊天窗口 → 跳过
-            #   "微信 (窗口)"  → 内置浏览器   → 跳过
-            #   "" (空)       → 转发弹窗     → 选中
-            if name == "微信" or "窗口" in name:
-                continue
-            b = win.get("kCGWindowBounds", {})
-            w = b.get("Width", 0); h = b.get("Height", 0)
-            # 最小尺寸保护：排除引用菜单等极小窗口（约 210×310）
-            if w > 200 and h > 200:
-                popup_bounds = {"x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h}
-                print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f}")
-                break
+    for retry in range(5):
+        wl = Quartz.CGWindowListCopyWindowInfo(k_excl | k_on_screen, Quartz.kCGNullWindowID)
+        for win in wl:
+            owner = win.get("kCGWindowOwnerName", "")
+            if "微信" in owner or "WeChat" in owner:
+                name = win.get("kCGWindowName", "")
+                # 按名称区分三种窗口：
+                #   "微信"        → 主聊天窗口 → 跳过
+                #   "微信 (窗口)"  → 内置浏览器   → 跳过
+                #   "" (空)       → 转发弹窗     → 选中
+                if name == "微信" or "窗口" in name:
+                    continue
+                b = win.get("kCGWindowBounds", {})
+                w = b.get("Width", 0); h = b.get("Height", 0)
+                # 最小尺寸保护：排除引用菜单等极小窗口（约 210×310）
+                if w > 200 and h > 200:
+                    popup_bounds = {"x": b.get("X", 0), "y": b.get("Y", 0), "w": w, "h": h}
+                    print(f"  [弹窗] 位置({popup_bounds['x']:.0f},{popup_bounds['y']:.0f}) 大小{popup_bounds['w']:.0f}x{popup_bounds['h']:.0f} [第{retry+1}次检测]")
+                    break
+        if popup_bounds:
+            break
+        time.sleep(0.2)
     if not popup_bounds:
-        print("  [弹窗] 未检测到弹窗窗口，Step 5 将使用全屏截图")
+        print("  [弹窗] 未检测到弹窗窗口（已重试5次），Step 5 将使用全屏截图")
 
     # Step 4: 在转发弹窗中搜索目标联系人
     print(f"  [4/5] 在转发弹窗中搜索联系人: {target_contact}...")
@@ -724,13 +730,13 @@ def forward_article_via_browser(article_url, target_contact, via_contact="文件
                         int((min(ys) + max(ys)) // 2) + oy)
         return None
 
-    # 先在裁剪区域中查找
+    # 先在 OCR 结果中查找（裁剪区域优先，否则全屏）
     click_pos = None
     send_clicked = False
-    if popup_bounds and send_ocr:
-        click_pos = _find_send_in_ocr(send_ocr,
-                                      int(popup_bounds["x"]),
-                                      int(popup_bounds["y"]))
+    if send_ocr:
+        ox = int(popup_bounds["x"]) if popup_bounds else 0
+        oy = int(popup_bounds["y"]) if popup_bounds else 0
+        click_pos = _find_send_in_ocr(send_ocr, ox, oy)
 
     if click_pos:
         cx, cy = click_pos
