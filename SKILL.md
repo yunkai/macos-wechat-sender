@@ -4,11 +4,38 @@ description: 在 Mac 上通过 Python pyautogui 自动化发送微信消息，�
 version: 1.21.0
 ---
 
-# WeChat Send Message v1.20.0
+# WeChat Send Message v1.22.0
 
 在 Mac 上自动化发送微信消息的技能。
 
 ## 更新记录
+
+### v1.22.0（2026-05-18）
+**macOS Sequoia 兼容性修复 + 卡片检测优化**
+
+**1. AppleScript `System Events` 彻底不可用**
+- **症状**：所有 `tell application "System Events"` 调用报 `syntax error 2741`（单行/多行/文件均失败）
+- **根因**：macOS Sequoia 上 `System Events.app` 的 AppleScript 接口失效，`open -a "System Events"` 返回 error -600
+- **修复**：`clean_window()` 全部改用 pyautogui：
+  - `key code 53` → `pyautogui.press('escape')`
+  - `keystroke "w" using command down` → `pyautogui.hotkey('command', 'w')`
+  - `count of windows` → `CGWindowListCopyWindowInfo`
+
+**2. `peekaboo --mode frontmost` 截图不可靠**
+- **症状**：截取到全屏截图而非微信窗口，导致 OCR 坐标空间错位
+- **修复**：`find_card_center()` 改用 `pyautogui.screenshot(region=(wx, wy, ww, wh))` 按窗口坐标精确截图
+
+**3. 卡片检测误选引用消息**
+- **场景**：小窗口（600×500）下，引用消息中的文字（如 `果光：xxx`、`大窗口测试`）被误判为卡片文字
+- **修复**：
+  - 正则过滤 `^\S{1,6}：` 排除引用消息头部
+  - 排除引用头部上方 60px 内的短文字（`len < 15`）
+  - 按分割线 Y（`line_y`）排序取最大，而非文字 Y（`cy`）
+  - 排除底部输入框区域（`line_y >= h - 80`）
+  - 点击位置固定：`max(cy+5, line_y-20)` 钳制到 `line_y-10`
+
+**4. `resize_wechat_window` 多行 AppleScript 修复**
+- 改为单行 osascript，避免多行字符串编码问题
 
 ### v1.21.0（2026-05-02）
 **Bug 修复 — Step 5 popup_bounds 误选主窗口导致「发送」按钮丢失**
@@ -109,34 +136,25 @@ import sys
 pyautogui.FAILSAFE = False
 
 def clean_window():
-    """清洁微信窗口状态"""
+    """清洁微信窗口状态（pyautogui 版，避免 AppleScript System Events 权限/编码问题）"""
     subprocess.run(["open", "-a", "WeChat"])
-    time.sleep(0.5)
+    time.sleep(0.3)
 
-    # 使用 AppleScript + System Events 精确关闭所有窗口
-    for i in range(10):
-        # 先按 Escape 关闭浮窗（如转发浮窗无法用 Cmd+W 直接关闭）
-        escape_script = '''
-        tell application "System Events"
-            tell process "WeChat"
-                set frontmost to true
-                key code 53
-            end tell
-        end tell
-        '''
-        subprocess.run(['osascript', '-e', escape_script])
-        time.sleep(0.3)
+    for i in range(3):
+        pyautogui.press('escape')
+        time.sleep(0.1)
+        pyautogui.hotkey('command', 'w')
+        time.sleep(0.1)
 
-        script = '''
-        tell application "System Events"
-            tell process "WeChat"
-                set frontmost to true
-                keystroke "w" using command down
-            end tell
-        end tell
-        '''
-        subprocess.run(['osascript', '-e', script])
-        time.sleep(0.05)
+        # 用 CGWindowList 检查窗口数（避免 osascript System Events）
+        wl = Quartz.CGWindowListCopyWindowInfo(2 | 1, Quartz.kCGNullWindowID)
+        wechat_windows = [
+            w for w in wl
+            if ("WeChat" in w.get("kCGWindowOwnerName", "") or
+                "微信" in w.get("kCGWindowOwnerName", ""))
+        ]
+        if len(wechat_windows) <= 1:
+            break
 
     subprocess.run(["open", "-a", "WeChat"])
     time.sleep(0.1)
@@ -206,10 +224,21 @@ send_message(MESSAGE)
 - 太短会导致剪贴板内容还没写入，粘贴出来是空的
 - 这是发送空消息的常见原因
 
-### 5. 关闭窗口的优化
-- 使用 `osascript` + `System Events` 向微信进程发送 Cmd+W
-- 每次发送后检查窗口数量，确保全部关闭
-- 比纯 pyautogui 循环更精确可靠
+### 5. ⚠️ macOS Sequoia：System Events 不可用
+- `tell application "System Events"` 在 macOS Sequoia 上**完全失效**
+- 所有 keystroke / key code / window count 操作必须改用 `pyautogui` + `Quartz.CGWindowListCopyWindowInfo`
+- `clean_window()` 中的 Cmd+W 和 Escape 用 `pyautogui.hotkey('command', 'w')` / `pyautogui.press('escape')`
+- 重启系统后偶尔恢复，但不可依赖
+
+### 6. ⚠️ peekaboo frontmost 截图不可靠
+- `peekaboo --mode frontmost` 可能截到全屏而非微信窗口
+- 需要精确窗口截图时改用 `pyautogui.screenshot(region=(wx, wy, ww, wh))`
+
+### 7. 卡片检测误选引用消息
+- 引用消息（如 `果光：xxx`）会产生额外分割线，干扰卡片定位
+- `find_card_center` 通过正则 `^\S{1,6}：` 过滤引用头部，并排除其上方 60px 内的短文字
+- 排序优先用 `line_y`（分割线 Y）而非 `cy`（文字 Y）
+- 点击位置固定在分割线上方 10-20px：`max(cy+5, line_y-20)` → `min(..., line_y-10)`
 
 ### 6. 文件发送原理
 - 使用 osascript 将文件直接复制到剪贴板
@@ -497,7 +526,26 @@ A: 这是 `wait_for_browser_window()` 函数的时机问题，**不是窗口名�
 - 弹窗未检测到：`[弹窗] 未检测到独立弹窗窗口，Step 5 将使用全屏截图`
 - 均失败：`[5/5] ⚠️ 未自动找到发送按钮，请手动点击`
 
-### Q: Step 4 报"OCR未找到「引用」菜单项"，但转发弹窗明明出现了？
+### Q: macOS Sequoia 上报 `syntax error 2741` 或 `application isn't running (-600)`？
+A: **`tell application "System Events"` 在 macOS Sequoia 上已不可用**。症状包括：
+- `osascript -e 'tell application "System Events" ...'` → `syntax error: 预期是行的结尾，却找到「"」。 (-2741)`
+- `open -a "System Events"` → `error -600`
+- 重启系统后偶尔恢复，但不可依赖
+
+**修复**：所有依赖 System Events 的 AppleScript 改用 pyautogui + Quartz：
+- `key code 53` → `pyautogui.press('escape')`
+- `keystroke "w" using command down` → `pyautogui.hotkey('command', 'w')`
+- `count of windows` → `Quartz.CGWindowListCopyWindowInfo`
+
+### Q: `find_card_center` 误选引用消息文字导致右键点错位置？
+A: 引用消息（如聊天记录中 `果光：xxx` 格式）会被卡片分割线检测误判。v1.22.0 已修复：
+1. 正则过滤 `^\S{1,6}：` 排除引用头部
+2. 排除引用头部上方 60px 内的短文字（引用内容）
+3. 按 `line_y` 排序（而非 `cy`）
+4. 点击位置固定：`max(cy+5, line_y-20)` 钳制到 `line_y-10`
+
+### Q: `peekaboo` 截取微信窗口得到全屏而非窗口截图？
+A: `peekaboo --mode frontmost` 在微信非 frontmost 时会截全屏。修复：`pyautogui.screenshot(region=(wx, wy, ww, wh))` 按窗口坐标精确截图。
 > A: 这是 `find_card_center()` 误判的典型表现。
 
 **现象**：Step 4 去右键点击卡片，但弹出的是输入框的右键菜单（包含「引用」等选项），OCR 在菜单截图中找不到「引用」。
