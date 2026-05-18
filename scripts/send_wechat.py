@@ -998,25 +998,65 @@ def find_card_center(known_title=None):
         print("  [卡片检测] 未找到卡片")
         return None
 
-    # 按 Y 坐标排序，取最新的（最大的 y = 最底部）
-    article_candidates.sort(key=lambda c: c[1], reverse=True)
-    best = article_candidates[0]
+    # 过滤疑似引用消息：文字匹配 "XX：xxx" 头部 或 在引用头部上方 60px 内的短文字
+    import re
+    _quote_re = re.compile(r'^\S{1,6}：')
+    quote_line_ys = set()
+    for c in article_candidates:
+        if _quote_re.match((c[2] or '').strip()):
+            quote_line_ys.add(c[4])
+    filtered = []
+    for c in article_candidates:
+        text = (c[2] or '').strip()
+        if _quote_re.match(text):
+            continue
+        # 在引用头部上方 60px 内且文字较短 → 引用消息内容
+        near = any(0 < qly - c[4] <= 60 for qly in quote_line_ys)
+        if near and len(text) < 15:
+            continue
+        filtered.append(c)
+    if not filtered:
+        filtered = article_candidates  # 全部被过滤则回退
+
+    # 按分割线 Y 排序，取最新卡片。
+    # 排除来源名：来源名通常 ≤5 字且高度较小，标题通常 >6 字或高度明显更大。
+    # 优先选同一 line_y 组中文字最长/最高的（即卡片标题而非来源名）。
+    filtered.sort(key=lambda c: c[4], reverse=True)  # 按 line_y 降序
+
+    # 排除 line_y 在窗口底部输入框区域的候选
+    best = None
+    for c in filtered:
+        if c[4] < h - 80:
+            best = c
+            break
+    if best is None:
+        best = filtered[0]
+
+    best_line_y = best[4]
+
+    # 在同一分割线附近（±30px）找文字最长/最高的候选作为标题
+    # 如果该组文字都太短（来源名特征），跳到上一个分割线组
+    best_line_y = best[4]
+    for attempt in range(3):  # 最多尝试3个分割线组
+        same_card = [c for c in filtered if abs(c[4] - best_line_y) <= 30]
+        if same_card:
+            same_card.sort(key=lambda c: (len(c[2] or ''), c[3]), reverse=True)
+            best = same_card[0]
+            if len(best[2] or '') >= 8:  # 标题通常 ≥8 字
+                break
+        # 当前组像来源名，找上一个分割线组
+        above = [c for c in filtered if c[4] < best_line_y - 30]
+        if not above:
+            break
+        best_line_y = max(c[4] for c in above)
+
     cx, cy, line_y = best[0], best[1], best[4]
     print(f"  [卡片检测] 选中底部: ({cx}, {cy}) '{best[2][:20]}' 分割线 y={line_y}")
 
-    # 点击位置：根据文字与分隔线的距离判断文字类型
-    # - 文字离分隔线较近(≤30px)：可能是来源名，点击上方
-    # - 文字离分隔线较远(>30px)：可能是标题，点击下方（卡片体内）
-    # 始终保持在文字和分隔线之间，靠近文字侧
-    dy = line_y - cy
-    if dy > 30:
-        # 标题：点击在文字下方（卡片体内），不超过分隔线上 10px
-        card_cy = cy + max(8, dy // 3)
-        card_cy = min(card_cy, line_y - 10)
-    else:
-        # 来源名：点击在文字上方（卡片体内），不超出窗口顶部
-        card_cy = max(cy - 15, 80)
-        card_cy = min(card_cy, line_y - 10)
+    # 点击位置：始终在分割线上方安全距离，确保在卡片内部
+    # 取「文字下方 5px」和「分割线上方 20px」之间
+    card_cy = max(cy + 5, line_y - 20)
+    card_cy = min(card_cy, line_y - 10)  # 不越过分割线
 
     # 转换到屏幕坐标
     screen_cx = int(wx) + cx
